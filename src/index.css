@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  .glass-panel {
+    background: rgba(11, 21, 38, 0.4);
+    -webkit-backdrop-filter: blur(24px);
+    backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .glass-card {
+    @apply bg-cobalt/40 backdrop-blur-md border border-white/5 shadow-lg rounded-2xl hover:bg-cobalt/50 transition-all duration-300;
+  }
+}
+
+body {
+  @apply bg-cobalt text-clinical font-sans min-h-screen overflow-x-hidden;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-cobalt/50;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-clinical/20 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-clinical/40;
+}
+
+/* Leaflet Map Overrides */
+.leaflet-popup-content-wrapper {
+  @apply !bg-cobalt !text-clinical !border !border-electric/30 !rounded-xl !shadow-lg;
+}
+
+.leaflet-popup-tip {
+  @apply !bg-cobalt !border !border-electric/30;
+}
