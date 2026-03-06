@@ -32,6 +32,16 @@ export const fetchDentalCompetitors = async (location: { lat: number, lng: numbe
             out center 150;
         `;
         const res = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`);
+        
+        if (!res.ok) {
+            throw new Error(`Overpass API responded with status: ${res.status}`);
+        }
+        
+        const contentType = res.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+            throw new Error("Overpass API did not return JSON");
+        }
+        
         const data = await res.json();
 
         if (data && data.elements && data.elements.length > 0) {

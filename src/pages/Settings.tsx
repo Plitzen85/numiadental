@@ -53,7 +53,22 @@ export const Settings: React.FC = () => {
         if (!formData.direccion.trim()) return;
         setIsGeocoding(true);
         try {
-            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(formData.direccion)}&limit=1`);
+            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(formData.direccion)}&limit=1`, {
+                headers: {
+                    'Accept': 'application/json',
+                    'User-Agent': 'NumiaDental/1.0 (Contact: numiadentalapp@gmail.com)' // required by Nominatim
+                }
+            });
+
+            if (!res.ok) {
+                throw new Error(`Nominatim API responded with status: ${res.status}`);
+            }
+
+            const contentType = res.headers.get("content-type");
+            if (!contentType || !contentType.includes("application/json")) {
+                throw new Error("Nominatim API did not return JSON");
+            }
+
             const data = await res.json();
             if (data && data.length > 0) {
                 const lat = parseFloat(data[0].lat);
@@ -153,6 +168,7 @@ export const Settings: React.FC = () => {
                             </div>
                             {formData.logo && (
                                 <button
+                                    title="Eliminar logo"
                                     onClick={removeLogo}
                                     className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full shadow-lg hover:bg-red-600 transition-colors"
                                 >
@@ -286,7 +302,7 @@ export const Settings: React.FC = () => {
                                             <span className="text-clinical text-sm">{name}</span>
                                             <div className="flex items-center gap-4">
                                                 <span className="text-electric font-syne font-bold text-sm">${price.toLocaleString()} MXN</span>
-                                                <button onClick={() => handleRemoveService(category, name)} className="text-red-400 hover:text-red-500">
+                                                <button title="Eliminar servicio" onClick={() => handleRemoveService(category, name)} className="text-red-400 hover:text-red-500">
                                                     <Trash2 className="w-4 h-4" />
                                                 </button>
                                             </div>
@@ -319,6 +335,7 @@ export const Settings: React.FC = () => {
                                 placeholder="MXN"
                             />
                             <button
+                                title="Agregar servicio"
                                 onClick={handleAddService}
                                 disabled={!newService.name || !newService.price}
                                 className="bg-white/10 hover:bg-white/20 disabled:opacity-50 text-clinical p-2 rounded-lg transition-colors"

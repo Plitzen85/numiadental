@@ -49,7 +49,22 @@ export const Radar: React.FC = () => {
 
         setIsGeocoding(true);
         try {
-            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(city)}&limit=1`);
+            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(city)}&limit=1`, {
+                headers: {
+                    'Accept': 'application/json',
+                    'User-Agent': 'NumiaDental/1.0 (Contact: numiadentalapp@gmail.com)' // required by Nominatim
+                }
+            });
+
+            if (!res.ok) {
+                throw new Error(`Nominatim API responded with status: ${res.status}`);
+            }
+
+            const contentType = res.headers.get("content-type");
+            if (!contentType || !contentType.includes("application/json")) {
+                throw new Error("Nominatim API did not return JSON");
+            }
+
             const data = await res.json();
             if (data && data.length > 0) {
                 setBaseLocation({ lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) });
