@@ -3,7 +3,7 @@ import { User, Activity, FileText, BriefcaseMedical, Landmark, Pill, Camera, Spa
 import { motion } from 'framer-motion';
 import { addTransaction, AccountType } from '../lib/financeApi';
 import { AIClinicalViewer } from './AIClinicalViewer';
-import { Odontogram } from './Odontogram';
+import { HybridChart } from './patient/HybridChart';
 
 interface PatientProfileProps {
     patientName: string;
@@ -11,7 +11,7 @@ interface PatientProfileProps {
 }
 
 export const PatientProfile: React.FC<PatientProfileProps> = ({ patientName, onClose }) => {
-    const [activeTab, setActiveTab] = useState<'historial' | 'periodontograma' | 'seguimiento' | 'finanzas'>('historial');
+    const [activeTab, setActiveTab] = useState<'historial' | 'odontograma' | 'seguimiento' | 'finanzas'>('historial');
     const [isAIViewerOpen, setIsAIViewerOpen] = useState(false);
     const [conceptoCobro, setConceptoCobro] = useState(`Tratamiento: ${patientName}`);
     const [cuentaCobro, setCuentaCobro] = useState<AccountType>('bbva');
@@ -60,7 +60,7 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({ patientName, onC
                 {/* Tabs */}
                 <div className="flex border-b border-white/10 px-6">
                     <button onClick={() => setActiveTab('historial')} className={`py-4 px-4 text-sm font-bold flex gap-2 items-center transition-colors border-b-2 ${activeTab === 'historial' ? 'border-electric text-electric' : 'border-transparent text-clinical/60 hover:text-white'}`}><User className="w-4 h-4" /> Historial Clínico</button>
-                    <button onClick={() => setActiveTab('periodontograma')} className={`py-4 px-4 text-sm font-bold flex gap-2 items-center transition-colors border-b-2 ${activeTab === 'periodontograma' ? 'border-emerald-400 text-emerald-400' : 'border-transparent text-clinical/60 hover:text-white'}`}><Activity className="w-4 h-4" /> Periodontograma</button>
+                    <button onClick={() => setActiveTab('odontograma')} className={`py-4 px-4 text-sm font-bold flex gap-2 items-center transition-colors border-b-2 ${activeTab === 'odontograma' ? 'border-emerald-400 text-emerald-400' : 'border-transparent text-clinical/60 hover:text-white'}`}><Activity className="w-4 h-4" /> Odontograma / Perio</button>
                     <button onClick={() => setActiveTab('seguimiento')} className={`py-4 px-4 text-sm font-bold flex gap-2 items-center transition-colors border-b-2 ${activeTab === 'seguimiento' ? 'border-japandi-wood text-japandi-wood' : 'border-transparent text-clinical/60 hover:text-white'}`}><BriefcaseMedical className="w-4 h-4" /> Evolución & Recetas</button>
                     <button onClick={() => setActiveTab('finanzas')} className={`py-4 px-4 text-sm font-bold flex gap-2 items-center transition-colors border-b-2 ${activeTab === 'finanzas' ? 'border-premium text-premium' : 'border-transparent text-clinical/60 hover:text-white'}`}><Landmark className="w-4 h-4" /> Cobrar (Caja)</button>
                 </div>
@@ -99,19 +99,19 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({ patientName, onC
                         </div>
                     )}
 
-                    {activeTab === 'periodontograma' && (
-                        <div className="space-y-6 animate-in fade-in duration-300">
-                            <div className="flex justify-between items-center bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4">
-                                <p className="text-emerald-400 font-bold flex items-center gap-2"><Activity className="w-5 h-5" /> Diagnóstico Periodontal Activo</p>
+                    {activeTab === 'odontograma' && (
+                        <div className="space-y-4 animate-in fade-in duration-300">
+                            <div className="flex items-center gap-2 bg-electric/5 border border-electric/20 rounded-xl px-4 py-2">
+                                <Activity className="w-4 h-4 text-electric" />
+                                <p className="text-electric text-sm font-bold">Odontograma + Periodontograma Interactivo</p>
+                                <span className="ml-auto text-[10px] text-clinical/40 uppercase tracking-widest">Haz clic en las superficies para marcar tratamientos</span>
                             </div>
-                            <div className="p-8 border border-white/10 rounded-2xl bg-white/5 min-h-[400px] flex items-center justify-center relative overflow-hidden">
-                                <div className="absolute inset-0 bg-white/5 opacity-10"></div>
-                                <div className="z-10 w-full relative">
-                                    <Odontogram />
-                                </div>
+                            <div className="w-full" style={{ minHeight: '600px' }}>
+                                <HybridChart />
                             </div>
                         </div>
                     )}
+
 
                     {activeTab === 'seguimiento' && (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-in fade-in duration-300">

@@ -11,6 +11,8 @@ import { Reports } from './pages/Reports';
 import { Agenda } from './pages/Agenda';
 import { ClinicDirectory } from './pages/ClinicDirectory';
 import { Inventory } from './pages/Inventory';
+import { Unauthorized } from './pages/Unauthorized';
+import { PermissionGuard } from './components/shared/PermissionGuard';
 
 function AppContent() {
     const navigate = useNavigate();
@@ -19,15 +21,34 @@ function AppContent() {
         <Layout currentPath={window.location.pathname} onNavigate={(path) => navigate(path)}>
             <Routes>
                 <Route path="/" element={<Dashboard />} />
-                <Route path="/radar" element={<Radar />} />
-                <Route path="/campaigns" element={<Campaigns />} />
-                <Route path="/tourism" element={<Tourism />} />
-                <Route path="/agenda" element={<Agenda />} />
-                <Route path="/clinica" element={<ClinicDirectory />} />
-                <Route path="/inventory" element={<Inventory />} />
-                <Route path="/settings" element={<Settings />} />
-                <Route path="/finanzas" element={<Finances />} />
-                <Route path="/reportes" element={<Reports />} />
+                <Route path="/radar" element={
+                    <PermissionGuard module="radar"><Radar /></PermissionGuard>
+                } />
+                <Route path="/campaigns" element={
+                    <PermissionGuard module="campanas"><Campaigns /></PermissionGuard>
+                } />
+                <Route path="/tourism" element={
+                    <PermissionGuard module="turismo"><Tourism /></PermissionGuard>
+                } />
+                <Route path="/agenda" element={
+                    <PermissionGuard module="agenda"><Agenda /></PermissionGuard>
+                } />
+                <Route path="/clinica" element={
+                    <PermissionGuard module="clinica"><ClinicDirectory /></PermissionGuard>
+                } />
+                <Route path="/inventory" element={
+                    <PermissionGuard module="inventario"><Inventory /></PermissionGuard>
+                } />
+                <Route path="/settings" element={
+                    <PermissionGuard module="settings"><Settings /></PermissionGuard>
+                } />
+                <Route path="/finanzas" element={
+                    <PermissionGuard module="finanzas"><Finances /></PermissionGuard>
+                } />
+                <Route path="/reportes" element={
+                    <PermissionGuard module="reportes"><Reports /></PermissionGuard>
+                } />
+                <Route path="/unauthorized" element={<Unauthorized />} />
             </Routes>
         </Layout>
     );
@@ -44,4 +65,3 @@ function App() {
 }
 
 export default App;
-

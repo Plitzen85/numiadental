@@ -36,6 +36,31 @@ export interface Patient {
     ultimaVisita: string;
 }
 
+export interface ModulePermissions {
+    dashboard: boolean;
+    radar: boolean;
+    agenda: boolean;
+    clinica: boolean;
+    inventario: boolean;
+    campanas: boolean;
+    turismo: boolean;
+    finanzas: boolean;
+    reportes: boolean;
+    settings: boolean;
+}
+
+export const DEFAULT_ADMIN_PERMISSIONS: ModulePermissions = {
+    dashboard: true, radar: true, agenda: true, clinica: true,
+    inventario: true, campanas: true, turismo: true, finanzas: true,
+    reportes: true, settings: true,
+};
+
+export const DEFAULT_DOCTOR_PERMISSIONS: ModulePermissions = {
+    dashboard: true, radar: false, agenda: true, clinica: true,
+    inventario: false, campanas: false, turismo: false, finanzas: false,
+    reportes: false, settings: false,
+};
+
 export interface StaffMember {
     id: string;
     nombres: string;
@@ -51,7 +76,9 @@ export interface StaffMember {
     especialidad: string;
     comentario: string;
     foto?: string; // Base64 string
-    colorTheme?: string; // Hex color or pre-defined class for agenda (e.g. '#3b82f6')
+    colorTheme?: string;
+    role?: 'admin' | 'doctor' | 'assistant';
+    modulePermissions?: ModulePermissions;
 }
 
 export interface DirectoryEntity {
@@ -132,6 +159,11 @@ export interface MarketContextType {
     setFinanceStats: React.Dispatch<React.SetStateAction<FinanceStats>>;
     patients: Patient[];
     setPatients: React.Dispatch<React.SetStateAction<Patient[]>>;
+    // RBAC
+    currentUserId: string;
+    setCurrentUserId: (id: string) => void;
+    hasPermission: (module: keyof ModulePermissions) => boolean;
+    updateStaffPermissions: (staffId: string, permissions: ModulePermissions) => void;
 }
 
 const defaultContext: MarketContextType = {
@@ -143,7 +175,7 @@ const defaultContext: MarketContextType = {
     setIsLoading: () => { },
     searchRadius: 10,
     setSearchRadius: () => { },
-    baseLocation: { lat: 19.4326, lng: -99.1332 }, // Default: Mexico City
+    baseLocation: { lat: 19.4326, lng: -99.1332 },
     setBaseLocation: () => { },
     clinicProfile: null,
     setClinicProfile: () => { },
@@ -152,7 +184,12 @@ const defaultContext: MarketContextType = {
     financeStats: { weeklyIncome: 0, weeklyGoal: 80000, monthlyIncome: 0, monthlyPatientsTreated: 0 },
     setFinanceStats: () => { },
     patients: [],
-    setPatients: () => { }
+    setPatients: () => { },
+    // RBAC defaults
+    currentUserId: '1',
+    setCurrentUserId: () => { },
+    hasPermission: () => true,
+    updateStaffPermissions: () => { },
 };
 
 const MarketContext = React.createContext<MarketContextType>(defaultContext);
@@ -160,6 +197,7 @@ const MarketContext = React.createContext<MarketContextType>(defaultContext);
 export const useMarket = () => useContext(MarketContext);
 
 export const MarketProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+    const [currentUserId, setCurrentUserId] = useState<string>('1');
     const [competitors, setCompetitors] = useState<Competitor[]>([]);
     const [intelligence, setIntelligence] = useState<MarketIntelligence>(defaultContext.intelligence);
     const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -193,7 +231,7 @@ export const MarketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
             }
         }
         return {
-            nombre: 'Mi Clínica VIP',
+            nombre: 'Nümia Dental',
             lat: 19.4326,
             lng: -99.1332,
             direccion: 'CDMX Centro',
@@ -205,32 +243,36 @@ export const MarketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
             logo: '',
             staff: [
                 {
-                    id: '1', nombres: 'Dr. Alejandro Vargas', organizacion: 'Market Agent Pro Clínica',
+                    id: '1', nombres: 'Dr. Alejandro Vargas', organizacion: 'Nümia Dental',
                     fechaNacimiento: '1985-04-12', email: 'dr.vargas@clinica.com', domicilio: 'Av. Principal 123',
                     pais: 'México', telefono: '555-010-2020', genero: 'Masculino', estadoCivil: 'Casado',
                     ciudad: 'Ciudad de México', especialidad: 'Cirujano Maxilofacial', comentario: 'Especialista principal',
-                    colorTheme: 'bg-blue-500/20 border-blue-500 text-blue-300'
+                    colorTheme: 'bg-blue-500/20 border-blue-500 text-blue-300',
+                    role: 'admin', modulePermissions: { ...DEFAULT_ADMIN_PERMISSIONS }
                 },
                 {
-                    id: '2', nombres: 'Dra. María Antonieta', organizacion: 'Market Agent Pro Clínica',
+                    id: '2', nombres: 'Dra. María Antonieta', organizacion: 'Nümia Dental',
                     fechaNacimiento: '1990-08-22', email: 'dra.maria@clinica.com', domicilio: 'Av. Secundaria 456',
                     pais: 'México', telefono: '555-010-3030', genero: 'Femenino', estadoCivil: 'Soltera',
                     ciudad: 'Ciudad de México', especialidad: 'Ortodoncia', comentario: 'Ortodoncista',
-                    colorTheme: 'bg-emerald-500/20 border-emerald-500 text-emerald-300'
+                    colorTheme: 'bg-emerald-500/20 border-emerald-500 text-emerald-300',
+                    role: 'doctor', modulePermissions: { ...DEFAULT_DOCTOR_PERMISSIONS }
                 },
                 {
-                    id: '3', nombres: 'Dr. Carlos Mendoza', organizacion: 'Market Agent Pro Clínica',
+                    id: '3', nombres: 'Dr. Carlos Mendoza', organizacion: 'Nümia Dental',
                     fechaNacimiento: '1988-11-05', email: 'dr.carlos@clinica.com', domicilio: 'Calle Tercera 789',
                     pais: 'México', telefono: '555-010-4040', genero: 'Masculino', estadoCivil: 'Casado',
                     ciudad: 'Ciudad de México', especialidad: 'Endodoncia', comentario: 'Endodoncista',
-                    colorTheme: 'bg-purple-500/20 border-purple-500 text-purple-300'
+                    colorTheme: 'bg-purple-500/20 border-purple-500 text-purple-300',
+                    role: 'doctor', modulePermissions: { ...DEFAULT_DOCTOR_PERMISSIONS }
                 },
                 {
-                    id: '4', nombres: 'Dra. Sofía Reyes', organizacion: 'Market Agent Pro Clínica',
+                    id: '4', nombres: 'Dra. Sofía Reyes', organizacion: 'Nümia Dental',
                     fechaNacimiento: '1992-02-14', email: 'dra.sofia@clinica.com', domicilio: 'Calle Cuarta 101',
                     pais: 'México', telefono: '555-010-5050', genero: 'Femenino', estadoCivil: 'Soltera',
                     ciudad: 'Ciudad de México', especialidad: 'Odontopediatría', comentario: 'Odontopediatra',
-                    colorTheme: 'bg-rose-500/20 border-rose-500 text-rose-300'
+                    colorTheme: 'bg-rose-500/20 border-rose-500 text-rose-300',
+                    role: 'assistant', modulePermissions: { ...DEFAULT_DOCTOR_PERMISSIONS }
                 }
             ],
             depositos: [
@@ -277,6 +319,23 @@ export const MarketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         }
     };
 
+    // RBAC helpers
+    const hasPermission = (module: keyof ModulePermissions): boolean => {
+        const staff = clinicProfile?.staff ?? [];
+        const user = staff.find(s => s.id === currentUserId);
+        if (!user) return true;
+        if (user.role === 'admin') return true;
+        return user.modulePermissions?.[module] ?? false;
+    };
+
+    const updateStaffPermissions = (staffId: string, permissions: ModulePermissions) => {
+        if (!clinicProfile) return;
+        const updatedStaff = (clinicProfile.staff ?? []).map(s =>
+            s.id === staffId ? { ...s, modulePermissions: permissions } : s
+        );
+        setClinicProfile({ ...clinicProfile, staff: updatedStaff });
+    };
+
     return (
         <MarketContext.Provider value={{
             competitors, setCompetitors,
@@ -287,7 +346,10 @@ export const MarketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
             clinicProfile, setClinicProfile,
             appointments, setAppointments,
             financeStats, setFinanceStats,
-            patients, setPatients
+            patients, setPatients,
+            currentUserId, setCurrentUserId,
+            hasPermission,
+            updateStaffPermissions,
         }}>
             {children}
         </MarketContext.Provider>
