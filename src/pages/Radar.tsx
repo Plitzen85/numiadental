@@ -1,79 +1,89 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
-import 'leaflet/dist/leaflet.css';
-import L from 'leaflet';
+import { GoogleMap, useJsApiLoader, MarkerF, InfoWindowF, CircleF, Autocomplete } from '@react-google-maps/api';
 import { useMarket } from '../context/MarketContext';
-import { fetchDentalCompetitors } from '../lib/mockApi';
+import { calculateDistance } from '../lib/mockApi';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import { MapPin, TrendingUp, AlertTriangle, ShieldCheck } from 'lucide-react';
 
-// Fix Leaflet default icon paths using a standard workaround
-delete (L.Icon.Default.prototype as any)._getIconUrl;
-L.Icon.Default.mergeOptions({
-    iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-    iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-});
+// Google Maps libraries we need
+const libraries: ("places" | "drawing" | "geometry" | "visualization" | "marker")[] = ['places'];
 
-// Custom icon for the user's clinic
-const userClinicIcon = new L.Icon({
-    iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-gold.png',
-    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-    iconSize: [25, 41],
-    iconAnchor: [12, 41],
-    popupAnchor: [1, -34],
-    shadowSize: [41, 41]
-});
+// Options for the Google Map
+const mapOptions = {
+    disableDefaultUI: false,
+    zoomControl: true,
+    styles: [
+        { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
+        { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
+        { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
+        { featureType: "water", elementType: "geometry", stylers: [{ color: "#17263c" }] },
+        { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#515c6d" }] },
+        { featureType: "water", elementType: "labels.text.stroke", stylers: [{ color: "#17263c" }] }
+    ]
+};
 
-function ChangeView({ center }: { center: [number, number] }) {
-    const map = useMap();
-    map.setView(center, map.getZoom());
-    return null;
-}
+const userClinicPin = {
+    url: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-gold.png',
+    scaledSize: { width: 25, height: 41 } as any // Google Maps Size object
+};
 
 export const Radar: React.FC = () => {
     const { competitors, setCompetitors, baseLocation, setBaseLocation, searchRadius, setSearchRadius, clinicProfile } = useMarket();
     const [isScanning, setIsScanning] = useState(false);
     const [scanRadius, setScanRadius] = useState<number>(10);
     const [isGeocoding, setIsGeocoding] = useState(false);
-    const [searchCity, setSearchCity] = useState('Ciudad de México');
+    const [selectedCompetitor, setSelectedCompetitor] = useState<any>(null);
+    const [searchCity, setSearchCity] = useState('');
+    const [isClinicPopupOpen, setIsClinicPopupOpen] = useState(false);
+    const mapRef = useRef<google.maps.Map | null>(null);
+    const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
+
+    const { isLoaded, loadError } = useJsApiLoader({
+        googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "", // Ensure VITE_GOOGLE_MAPS_API_KEY is in .env
+        libraries,
+    });
+
+    const onLoad = useCallback((map: google.maps.Map) => {
+        mapRef.current = map;
+    }, []);
+
+    const onUnmount = useCallback(() => {
+        mapRef.current = null;
+    }, []);
+
+    const onPlaceChanged = () => {
+        if (autocompleteRef.current !== null) {
+            const place = autocompleteRef.current.getPlace();
+            if (place.geometry && place.geometry.location) {
+                const lat = place.geometry.location.lat();
+                const lng = place.geometry.location.lng();
+                setBaseLocation({ lat, lng });
+                const newCity = place.name || place.formatted_address || searchCity;
+                setSearchCity(newCity);
+                setCompetitors([]);
+            }
+        }
+    };
 
     const handleCitySearch = async (e: React.FormEvent) => {
         e.preventDefault();
         const city = searchCity;
-        if (!city.trim()) return;
+        if (!city.trim() || !isLoaded) return;
 
         setIsGeocoding(true);
-        try {
-            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(city)}&limit=1`, {
-                headers: {
-                    'Accept': 'application/json',
-                    'User-Agent': 'NumiaDental/1.0 (Contact: numiadentalapp@gmail.com)' // required by Nominatim
-                }
-            });
-
-            if (!res.ok) {
-                throw new Error(`Nominatim API responded with status: ${res.status}`);
-            }
-
-            const contentType = res.headers.get("content-type");
-            if (!contentType || !contentType.includes("application/json")) {
-                throw new Error("Nominatim API did not return JSON");
-            }
-
-            const data = await res.json();
-            if (data && data.length > 0) {
-                setBaseLocation({ lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) });
+        const geocoder = new google.maps.Geocoder();
+        geocoder.geocode({ address: city }, (results, status) => {
+            if (status === 'OK' && results && results[0]) {
+                const lat = results[0].geometry.location.lat();
+                const lng = results[0].geometry.location.lng();
+                setBaseLocation({ lat, lng });
             } else {
-                alert("No se encontró la ubicación. Intenta nuevamente.");
+                alert("No se encontró la ubicación en Google Maps. Intenta nuevamente.");
             }
-        } catch (error) {
-            console.error("Geocoding failed", error);
-        } finally {
             setIsGeocoding(false);
             setCompetitors([]);
-        }
+        });
     };
 
     const [activeTab, setActiveTab] = useState<'mapa' | 'notificaciones'>('mapa');
@@ -85,9 +95,53 @@ export const Radar: React.FC = () => {
         setCompetitors([]);
         setNuevasAperturas([]);
 
-        try {
-            const data = await fetchDentalCompetitors(baseLocation, scanRadius);
-            setCompetitors(data.negocios);
+        if (!isLoaded || !mapRef.current) {
+            alert("Google Maps no está listo aún.");
+            setIsScanning(false);
+            return;
+        }
+
+        const service = new google.maps.places.PlacesService(mapRef.current);
+        const request: google.maps.places.PlaceSearchRequest = {
+            location: baseLocation,
+            radius: scanRadius * 1000,
+            type: 'dentist',
+        };
+
+        service.nearbySearch(request, (results, status) => {
+            if (status === google.maps.places.PlacesServiceStatus.OK && results) {
+                const competitorsData = results.map((place, i) => {
+                    const lat = place.geometry?.location?.lat() || 0;
+                    const lng = place.geometry?.location?.lng() || 0;
+                    const distance = calculateDistance(baseLocation.lat, baseLocation.lng, lat, lng);
+
+                    const basePrice = 10000 + (Math.random() * 10000); // Simulamos precios base estructurados 
+
+                    return {
+                        id: place.place_id || `comp-${i}`,
+                        nombre: place.name || 'Consultorio Dental',
+                        direccion: place.vicinity || 'Dirección no disponible',
+                        servicios: ['Implantes', 'Ortodoncia', 'Limpieza', 'Blanqueamiento', 'Endodoncia', 'Carillas'].sort(() => 0.5 - Math.random()).slice(0, 3),
+                        precios: {
+                            'Implantes': basePrice,
+                            'Ortodoncia': basePrice * 1.5,
+                            'Limpieza': 800 + Math.random() * 400
+                        },
+                        rating: place.rating || Number((Math.random() * (5 - 3.8) + 3.8).toFixed(1)),
+                        distancia_km: Number(distance.toFixed(1)),
+                        segmento: basePrice > 16000 ? 'Premium' : basePrice > 13000 ? 'Standard' : 'Low-cost' as any,
+                        posicionamiento: basePrice > 16000 ? 'Alta tecnología y estética' : 'Accesibilidad e integral',
+                        lat: lat,
+                        lng: lng
+                    };
+                });
+                setCompetitors(competitorsData);
+            } else if (status === google.maps.places.PlacesServiceStatus.ZERO_RESULTS) {
+                alert("No se encontraron consultorios dentales en esta área según Google Maps.");
+            } else {
+                console.error("Google Places Error:", status);
+                alert("Hubo un error consultando Google Maps: " + status);
+            }
 
             // Simulating live search for new business registrations in the area
             setTimeout(() => {
@@ -96,13 +150,9 @@ export const Radar: React.FC = () => {
                     { id: 'new-2', nombre: 'Dental Care Riviera', fechaRegistro: 'Hace 5 días', plataforma: 'Directorio Médico Nacional', direccion: 'Quinta Avenida, Playa del Carmen' },
                     { id: 'new-3', nombre: 'Clinica Dental del Sol', fechaRegistro: 'Hace 1 semana', plataforma: 'Facebook Pages', direccion: 'Col. Zazil-Ha, Playa del Carmen' }
                 ]);
+                setIsScanning(false);
             }, 1000);
-        } catch (error) {
-            console.error("Error al analizar la zona", error);
-            alert("No se pudieron obtener los competidores reales en esta zona.");
-        } finally {
-            setIsScanning(false);
-        }
+        });
     };
 
     // Gap Engine Metrics
@@ -197,18 +247,34 @@ export const Radar: React.FC = () => {
                     <form onSubmit={handleCitySearch} className="flex-1 md:flex-none relative">
                         <label className="text-xs text-clinical/60 block mb-1">Ciudad / Región</label>
                         <div className="relative">
-                            <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-white/50 w-5 h-5" />
-                            <input
-                                title="Campo"
-                                type="text"
-                                placeholder="Ciudad / Región"
-                                className={`w-full bg-[#0A1628] border border-white/10 rounded-lg py-2 pl-10 pr-4 text-white focus:outline-none focus:border-electric transition-colors text-sm ${isGeocoding ? 'opacity-50' : ''}`}
-                                value={searchCity}
-                                onChange={(e) => setSearchCity(e.target.value)}
-                                onFocus={(e) => e.target.select()}
-                                disabled={isGeocoding}
-                            />
-                            {isGeocoding && <span className="absolute right-3 top-2.5 w-4 h-4 rounded-full border-2 border-electric border-t-transparent animate-spin"></span>}
+                            <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-white/50 w-5 h-5 z-10" />
+                            {isLoaded ? (
+                                <Autocomplete
+                                    onLoad={(auto) => { autocompleteRef.current = auto; }}
+                                    onPlaceChanged={onPlaceChanged}
+                                    options={{ types: ['(cities)'] }}
+                                >
+                                    <input
+                                        title="Campo"
+                                        type="text"
+                                        placeholder="Ej. Cancún, Quintana Roo"
+                                        className={`w-full bg-[#0A1628] border border-white/10 rounded-lg py-2 pl-10 pr-4 text-white focus:outline-none focus:border-electric transition-colors text-sm ${isGeocoding ? 'opacity-50' : ''}`}
+                                        value={searchCity}
+                                        onChange={(e) => setSearchCity(e.target.value)}
+                                        onFocus={(e) => e.target.select()}
+                                        disabled={isGeocoding}
+                                    />
+                                </Autocomplete>
+                            ) : (
+                                <input
+                                    title="Cargando Buscador..."
+                                    type="text"
+                                    placeholder="Cargando Google Places..."
+                                    className={`w-full bg-[#0A1628] border border-white/10 rounded-lg py-2 pl-10 pr-4 text-white focus:outline-none focus:border-electric transition-colors text-sm opacity-50`}
+                                    disabled={true}
+                                />
+                            )}
+                            {isGeocoding && <span className="absolute right-3 top-2.5 w-4 h-4 rounded-full border-2 border-electric border-t-transparent animate-spin z-10"></span>}
                         </div>
                     </form>
                     <div>
@@ -264,43 +330,81 @@ export const Radar: React.FC = () => {
                                 <p className="text-electric font-syne font-bold animate-pulse">Analizando sector y triangulando competidores...</p>
                             </div>
                         )}
-                        <MapContainer center={[baseLocation.lat, baseLocation.lng]} zoom={13} className="w-full h-full z-0 bg-[#0A1628]">
-                            <ChangeView center={[baseLocation.lat, baseLocation.lng]} />
-                            <TileLayer
-                                url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-                                attribution='&copy; <a href="https://carto.com/">CARTO</a>'
-                            />
+                        {isLoaded ? (
+                            <GoogleMap
+                                mapContainerStyle={{ width: '100%', height: '100%', zIndex: 0 }}
+                                center={baseLocation}
+                                zoom={13}
+                                options={mapOptions}
+                                onLoad={onLoad}
+                                onUnmount={onUnmount}
+                            >
+                                {/* User Clinic Marker */}
+                                {clinicProfile && (
+                                    <MarkerF
+                                        position={{ lat: clinicProfile.lat, lng: clinicProfile.lng }}
+                                        icon={userClinicPin}
+                                        onClick={() => setIsClinicPopupOpen(true)}
+                                    >
+                                        {isClinicPopupOpen && (
+                                            <InfoWindowF onCloseClick={() => setIsClinicPopupOpen(false)}>
+                                                <div className="font-sans text-[#0A1628] p-1">
+                                                    <h3 className="font-bold text-[#FFB800] mb-1">Tu Clínica: {clinicProfile.nombre}</h3>
+                                                    <p className="text-xs text-gray-700">{clinicProfile.direccion}</p>
+                                                </div>
+                                            </InfoWindowF>
+                                        )}
+                                    </MarkerF>
+                                )}
 
-                            {/* User Clinic Marker */}
-                            {clinicProfile && (
-                                <Marker position={[clinicProfile.lat, clinicProfile.lng]} icon={userClinicIcon}>
-                                    <Popup className="custom-popup border-premium">
-                                        <div className="font-sans text-clinical p-1">
-                                            <h3 className="font-bold text-premium mb-1">Tu Clínica: {clinicProfile.nombre}</h3>
-                                            <p className="text-xs text-white/70">{clinicProfile.direccion}</p>
-                                        </div>
-                                    </Popup>
-                                </Marker>
-                            )}
+                                {/* Competitors Markers */}
+                                {competitors.map(comp => (
+                                    <MarkerF
+                                        key={comp.id}
+                                        position={{ lat: comp.lat, lng: comp.lng }}
+                                        onClick={() => setSelectedCompetitor(comp)}
+                                    >
+                                        {selectedCompetitor?.id === comp.id && (
+                                            <InfoWindowF onCloseClick={() => setSelectedCompetitor(null)}>
+                                                <div className="font-sans text-[#0A1628] p-1 min-w-[200px]">
+                                                    <h3 className="font-bold text-[#00D4FF] mb-1">{comp.nombre}</h3>
+                                                    <p className="text-xs text-gray-700 mb-2">{comp.direccion}</p>
+                                                    <div className="flex justify-between items-center text-xs border-t border-gray-200 pt-2">
+                                                        <span className="bg-gray-100 px-2 py-1 rounded">{comp.segmento}</span>
+                                                        <span className="text-[#FFB800] font-bold">★ {comp.rating}</span>
+                                                    </div>
+                                                </div>
+                                            </InfoWindowF>
+                                        )}
+                                    </MarkerF>
+                                ))}
 
-                            {competitors.map(comp => (
-                                <Marker key={comp.id} position={[comp.lat, comp.lng]}>
-                                    <Popup className="custom-popup">
-                                        <div className="font-sans text-clinical p-1">
-                                            <h3 className="font-bold text-electric mb-1">{comp.nombre}</h3>
-                                            <p className="text-xs text-white/70 mb-2">{comp.direccion}</p>
-                                            <div className="flex justify-between items-center text-xs border-t border-white/10 pt-2">
-                                                <span className="bg-white/10 px-2 py-1 rounded">{comp.segmento}</span>
-                                                <span className="text-premium">★ {comp.rating}</span>
-                                            </div>
-                                        </div>
-                                    </Popup>
-                                </Marker>
-                            ))}
-                            {competitors.length > 0 && (
-                                <Circle center={[baseLocation.lat, baseLocation.lng]} radius={searchRadius * 1000} pathOptions={{ color: '#00D4FF', fillColor: '#00D4FF', fillOpacity: 0.1 }} />
-                            )}
-                        </MapContainer>
+                                {/* Search Radius Circle */}
+                                {competitors.length > 0 && (
+                                    <CircleF
+                                        center={baseLocation}
+                                        radius={searchRadius * 1000}
+                                        options={{
+                                            fillColor: '#00D4FF',
+                                            fillOpacity: 0.1,
+                                            strokeColor: '#00D4FF',
+                                            strokeOpacity: 0.4,
+                                            strokeWeight: 2,
+                                            clickable: false,
+                                            zIndex: 1
+                                        }}
+                                    />
+                                )}
+                            </GoogleMap>
+                        ) : (
+                            <div className="w-full h-full flex flex-col items-center justify-center bg-[#0A1628] border border-white/10 rounded-2xl">
+                                {loadError ? (
+                                    <p className="text-red-400 p-4 text-center">Error al cargar Google Maps: Verifica tu API Key o conexión.</p>
+                                ) : (
+                                    <span className="w-10 h-10 border-4 border-electric border-t-transparent rounded-full animate-spin"></span>
+                                )}
+                            </div>
+                        )}
                     </div>
 
                     {/* Gap Engine & Competitors List */}
