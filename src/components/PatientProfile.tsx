@@ -1,224 +1,523 @@
-import React, { useState } from 'react';
-import { User, Activity, FileText, BriefcaseMedical, Landmark, Pill, Camera, Sparkles } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import {
+    User, Activity, FileText, BriefcaseMedical, Landmark, Camera,
+    Sparkles, Trash2, Loader2, CheckCircle2, Plus, Layers,
+} from 'lucide-react';
 import { motion } from 'framer-motion';
 import { addTransaction, AccountType } from '../lib/financeApi';
 import { AIClinicalViewer } from './AIClinicalViewer';
 import { HybridChart } from './patient/HybridChart';
+import { VisitRecord } from './patient/VisitRecord';
+import { TreatmentPipeline } from './patient/TreatmentPipeline';
+import { useMarket } from '../context/MarketContext';
+import {
+    loadPatientRecord, savePatientRecord, uploadPatientFile, deletePatientFile,
+    PatientMedicalHistory, PatientFile,
+    PatientVisit, TreatmentPlan, VisitStatus,
+} from '../lib/supabase';
 
 interface PatientProfileProps {
+    patientId: string;
     patientName: string;
     onClose: () => void;
 }
 
-export const PatientProfile: React.FC<PatientProfileProps> = ({ patientName, onClose }) => {
-    const [activeTab, setActiveTab] = useState<'historial' | 'odontograma' | 'seguimiento' | 'finanzas'>('historial');
+// ─── Visit status config (for list sidebar) ───────────────────────────────────
+const VISIT_STATUS_DOT: Record<VisitStatus, string> = {
+    attended:          'bg-emerald-500',
+    cancelled_patient: 'bg-red-500',
+    cancelled_clinic:  'bg-orange-500',
+    no_show:           'bg-gray-500',
+};
+
+type TabId = 'historial' | 'odontograma' | 'consultas' | 'plan_tratamiento' | 'finanzas';
+
+export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patientName, onClose }) => {
+    const { currentUserId, clinicProfile } = useMarket();
+    const currentDoctor = clinicProfile?.staff?.find(s => s.id === currentUserId);
+
+    const [activeTab, setActiveTab] = useState<TabId>('historial');
     const [isAIViewerOpen, setIsAIViewerOpen] = useState(false);
+
+    // ── Finance state ────────────────────────────────────────────────────────
     const [conceptoCobro, setConceptoCobro] = useState(`Tratamiento: ${patientName}`);
     const [cuentaCobro, setCuentaCobro] = useState<AccountType>('bbva');
     const [montoCobro, setMontoCobro] = useState('');
     const [cryptoType, setCryptoType] = useState('USDT');
-    const [isSaving, setIsSaving] = useState(false);
+    const [isSavingPago, setIsSavingPago] = useState(false);
     const [pagoAprobado, setPagoAprobado] = useState(false);
 
-    const handleCobroSubmit = async (e: React.FormEvent) => {
+    // ── Clinical record state ────────────────────────────────────────────────
+    const [isLoading, setIsLoading] = useState(true);
+    const [isSavingHistory, setIsSavingHistory] = useState(false);
+    const [savedMsg, setSavedMsg] = useState('');
+    const [medicalHistory, setMedicalHistory] = useState<PatientMedicalHistory>({
+        alergias: false, diabetes: false, hipertension: false,
+        cardiopatia: false, embarazo: false, medicamentos: '', notas: '',
+    });
+    const [files, setFiles] = useState<PatientFile[]>([]);
+    const [isUploadingFile, setIsUploadingFile] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // ── Visits & Treatment Plan state ────────────────────────────────────────
+    const [visits, setVisits] = useState<PatientVisit[]>([]);
+    const [treatmentPlan, setTreatmentPlan] = useState<TreatmentPlan>({ items: [], notes: '', updatedAt: '' });
+    const [selectedVisitId, setSelectedVisitId] = useState<string | null>(null);
+
+    // ── Load record on mount ─────────────────────────────────────────────────
+    useEffect(() => {
+        setIsLoading(true);
+        loadPatientRecord(patientId).then(record => {
+            setMedicalHistory(record.medicalHistory ?? {
+                alergias: false, diabetes: false, hipertension: false,
+                cardiopatia: false, embarazo: false, medicamentos: '', notas: '',
+            });
+            setFiles(record.files ?? []);
+            setVisits(record.visits ?? []);
+            setTreatmentPlan(record.treatmentPlan ?? { items: [], notes: '', updatedAt: '' });
+            // pre-select most recent visit
+            if (record.visits?.length) {
+                const sorted = [...record.visits].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                setSelectedVisitId(sorted[0].id);
+            }
+            setIsLoading(false);
+        });
+    }, [patientId]);
+
+    const showSaved = (msg = '¡Guardado!') => {
+        setSavedMsg(msg);
+        setTimeout(() => setSavedMsg(''), 2500);
+    };
+
+    // ── Medical history ──────────────────────────────────────────────────────
+    const handleSaveHistory = async () => {
+        setIsSavingHistory(true);
+        await savePatientRecord(patientId, { medicalHistory });
+        setIsSavingHistory(false);
+        showSaved('Historial actualizado');
+    };
+
+    // ── Global files (radiografías, documentos) ──────────────────────────────
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setIsUploadingFile(true);
+        const result = await uploadPatientFile(patientId, file);
+        if (result) {
+            const newFile: PatientFile = {
+                id: `file-${Date.now()}`,
+                name: file.name,
+                storagePath: result.storagePath,
+                url: result.url,
+                createdAt: new Date().toISOString(),
+                type: file.type.startsWith('image/') ? 'radiografia' : 'documento',
+            };
+            const updatedFiles = [...files, newFile];
+            await savePatientRecord(patientId, { files: updatedFiles });
+            setFiles(updatedFiles);
+            showSaved('Archivo subido');
+        }
+        setIsUploadingFile(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+
+    const handleDeleteFile = async (fileItem: PatientFile) => {
+        if (!confirm(`¿Eliminar "${fileItem.name}"?`)) return;
+        await deletePatientFile(fileItem.storagePath);
+        const updated = files.filter(f => f.id !== fileItem.id);
+        await savePatientRecord(patientId, { files: updated });
+        setFiles(updated);
+    };
+
+    // ── Visits ───────────────────────────────────────────────────────────────
+    const handleCreateVisit = async () => {
+        const newVisit: PatientVisit = {
+            id: `visit-${Date.now()}`,
+            date: new Date().toISOString().split('T')[0],
+            doctorId: currentUserId,
+            doctorName: currentDoctor?.nombres ?? 'Doctor',
+            chiefComplaint: '',
+            diagnosis: '',
+            procedures: '',
+            evolutionNote: '',
+            status: 'attended',
+            duration: 30,
+            files: [],
+        };
+        const updatedVisits = [newVisit, ...visits];
+        await savePatientRecord(patientId, { visits: updatedVisits });
+        setVisits(updatedVisits);
+        setSelectedVisitId(newVisit.id);
+        showSaved('Nueva consulta creada');
+    };
+
+    const handleSaveVisit = async (updated: PatientVisit) => {
+        const updatedVisits = visits.map(v => v.id === updated.id ? updated : v);
+        await savePatientRecord(patientId, { visits: updatedVisits });
+        setVisits(updatedVisits);
+    };
+
+    const handleDeleteVisit = async (id: string) => {
+        if (!confirm('¿Eliminar esta consulta? Esta acción no se puede deshacer.')) return;
+        const updatedVisits = visits.filter(v => v.id !== id);
+        await savePatientRecord(patientId, { visits: updatedVisits });
+        setVisits(updatedVisits);
+        const sorted = [...updatedVisits].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        setSelectedVisitId(sorted[0]?.id ?? null);
+    };
+
+    // ── Treatment Plan ───────────────────────────────────────────────────────
+    const handleSaveTreatmentPlan = async (plan: TreatmentPlan) => {
+        await savePatientRecord(patientId, { treatmentPlan: plan });
+        setTreatmentPlan(plan);
+    };
+
+    // ── Finance ──────────────────────────────────────────────────────────────
+    const handleCobroSubmit = async (e: React.SyntheticEvent) => {
         e.preventDefault();
         if (!montoCobro) return;
-        setIsSaving(true);
+        setIsSavingPago(true);
         await addTransaction('ingreso', cuentaCobro, conceptoCobro, Number(montoCobro), cuentaCobro === 'cripto' ? cryptoType : undefined);
-        setIsSaving(false);
+        setIsSavingPago(false);
         setPagoAprobado(true);
         setTimeout(() => setPagoAprobado(false), 3000);
         setMontoCobro('');
     };
 
+    const formatVisitDate = (iso: string) => {
+        const d = new Date(iso + (iso.includes('T') ? '' : 'T00:00:00'));
+        return d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
+    };
+
+    // Sorted visits newest first
+    const sortedVisits = [...visits].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const selectedVisit = visits.find(v => v.id === selectedVisitId) ?? null;
+
+    // ── Tab definition ───────────────────────────────────────────────────────
+    const TABS: { id: TabId; label: string; icon: React.ReactNode; accent: string }[] = [
+        { id: 'historial',        label: 'Historial Clínico',    icon: <User           className="w-4 h-4" />, accent: 'border-electric text-electric' },
+        { id: 'odontograma',      label: 'Odontograma / Perio',  icon: <Activity       className="w-4 h-4" />, accent: 'border-emerald-400 text-emerald-400' },
+        { id: 'consultas',        label: 'Consultas',            icon: <BriefcaseMedical className="w-4 h-4" />, accent: 'border-blue-400 text-blue-400' },
+        { id: 'plan_tratamiento', label: 'Plan de Tratamiento',  icon: <Layers         className="w-4 h-4" />, accent: 'border-japandi-wood text-japandi-wood' },
+        { id: 'finanzas',         label: 'Caja',                 icon: <Landmark       className="w-4 h-4" />, accent: 'border-premium text-premium' },
+    ];
+
     return (
         <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-cobalt/95 backdrop-blur-md">
-            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-cobalt border border-white/10 w-full max-w-5xl h-[90vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden">
-
-                {/* Header */}
-                <div className="p-6 border-b border-white/10 flex justify-between items-start bg-gradient-to-r from-white/5 to-transparent">
+            <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="bg-cobalt border border-white/10 w-full max-w-6xl h-[92vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+            >
+                {/* ── Header ──────────────────────────────────────────────── */}
+                <div className="p-6 border-b border-white/10 flex justify-between items-start bg-gradient-to-r from-white/5 to-transparent flex-shrink-0">
                     <div className="flex items-center gap-4">
                         <div className="w-16 h-16 rounded-full bg-electric/20 flex items-center justify-center border border-electric/40">
                             <span className="font-syne font-bold text-2xl text-electric">{patientName.charAt(0)}</span>
                         </div>
                         <div>
                             <h2 className="font-syne text-2xl font-bold text-white">{patientName}</h2>
-                            <p className="text-clinical/60 text-sm">ID: PX-88492 • Paciente Frecuente</p>
+                            <p className="text-clinical/60 text-sm">
+                                ID: {patientId} · Expediente Clínico
+                                {visits.length > 0 && <span className="ml-2 text-clinical/40">· {visits.length} consultas</span>}
+                            </p>
                         </div>
                     </div>
                     <div className="flex items-center gap-3">
-                        <button
-                            onClick={() => setIsAIViewerOpen(true)}
-                            className="bg-electric/20 text-electric hover:bg-electric/30 border border-electric/30 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors shadow-[0_0_15px_rgba(0,212,255,0.2)]"
-                        >
+                        {savedMsg && (
+                            <span className="flex items-center gap-1.5 text-emerald-400 text-xs font-bold animate-pulse">
+                                <CheckCircle2 className="w-4 h-4" /> {savedMsg}
+                            </span>
+                        )}
+                        <button onClick={() => setIsAIViewerOpen(true)} className="bg-electric/20 text-electric hover:bg-electric/30 border border-electric/30 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors shadow-[0_0_15px_rgba(0,212,255,0.2)]">
                             <Sparkles className="w-4 h-4" /> NÜMIA AI
                         </button>
-                        <button onClick={onClose} className="text-clinical/60 hover:text-white bg-white/5 hover:bg-white/10 p-2 rounded-xl transition-colors">Cerrar Expediente</button>
+                        <button onClick={onClose} className="text-clinical/60 hover:text-white bg-white/5 hover:bg-white/10 p-2 rounded-xl transition-colors">Cerrar</button>
                     </div>
                 </div>
 
-                {/* Tabs */}
-                <div className="flex border-b border-white/10 px-6">
-                    <button onClick={() => setActiveTab('historial')} className={`py-4 px-4 text-sm font-bold flex gap-2 items-center transition-colors border-b-2 ${activeTab === 'historial' ? 'border-electric text-electric' : 'border-transparent text-clinical/60 hover:text-white'}`}><User className="w-4 h-4" /> Historial Clínico</button>
-                    <button onClick={() => setActiveTab('odontograma')} className={`py-4 px-4 text-sm font-bold flex gap-2 items-center transition-colors border-b-2 ${activeTab === 'odontograma' ? 'border-emerald-400 text-emerald-400' : 'border-transparent text-clinical/60 hover:text-white'}`}><Activity className="w-4 h-4" /> Odontograma / Perio</button>
-                    <button onClick={() => setActiveTab('seguimiento')} className={`py-4 px-4 text-sm font-bold flex gap-2 items-center transition-colors border-b-2 ${activeTab === 'seguimiento' ? 'border-japandi-wood text-japandi-wood' : 'border-transparent text-clinical/60 hover:text-white'}`}><BriefcaseMedical className="w-4 h-4" /> Evolución & Recetas</button>
-                    <button onClick={() => setActiveTab('finanzas')} className={`py-4 px-4 text-sm font-bold flex gap-2 items-center transition-colors border-b-2 ${activeTab === 'finanzas' ? 'border-premium text-premium' : 'border-transparent text-clinical/60 hover:text-white'}`}><Landmark className="w-4 h-4" /> Cobrar (Caja)</button>
+                {/* ── Tabs ────────────────────────────────────────────────── */}
+                <div className="flex border-b border-white/10 px-6 flex-shrink-0 overflow-x-auto">
+                    {TABS.map(tab => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setActiveTab(tab.id)}
+                            className={`py-4 px-4 text-sm font-bold flex gap-2 items-center whitespace-nowrap transition-colors border-b-2 flex-shrink-0 ${activeTab === tab.id ? tab.accent : 'border-transparent text-clinical/60 hover:text-white'}`}
+                        >
+                            {tab.icon} {tab.label}
+                        </button>
+                    ))}
                 </div>
 
-                {/* Content Area */}
-                <div className="flex-1 overflow-y-auto p-6">
-
-                    {activeTab === 'historial' && (
-                        <div className="space-y-6 animate-in fade-in duration-300">
-                            <h3 className="font-syne text-lg text-white">Antecedentes Médicos</h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div className="space-y-4">
-                                    <label className="flex items-center gap-3 p-3 border border-white/10 rounded-xl bg-white/5">
-                                        <input title="Campo" type="checkbox" className="w-5 h-5 bg-black border-white/20 rounded text-electric" />
-                                        <span className="text-clinical/90">Alergias a Medicamentos</span>
-                                    </label>
-                                    <label className="flex items-center gap-3 p-3 border border-red-500/30 rounded-xl bg-red-500/10">
-                                        <input title="Campo" type="checkbox" defaultChecked className="w-5 h-5 bg-black border-white/20 rounded text-electric" />
-                                        <span className="text-white font-bold">Diabetes / Hipertensión</span>
-                                    </label>
-                                </div>
-                                <textarea title="Texto" className="w-full h-32 bg-black/30 border border-white/10 rounded-xl p-4 text-clinical/80 focus:border-electric outline-none" placeholder="Notas adicionales sobre el historial del paciente... (Ej. Paciente refiere dolor punzante en cuadrante 2)"></textarea>
-                            </div>
-
-                            <h3 className="font-syne text-lg text-white mt-8 mb-4">Archivos y Radiografías</h3>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                <div className="aspect-square border-2 border-dashed border-white/20 rounded-xl flex flex-col items-center justify-center text-clinical/50 bg-white/5 hover:bg-white/10 transition-colors cursor-pointer">
-                                    <Camera className="w-8 h-8 mb-2" />
-                                    <span className="text-xs">Subir Radiografía</span>
-                                </div>
-                                <div className="aspect-square border border-white/10 rounded-xl bg-black/50 p-2 relative group">
-                                    <img src="https://images.unsplash.com/photo-1606811841689-23dfddce3e95?auto=format&fit=crop&q=80&w=200&h=200" className="w-full h-full object-cover rounded-lg opacity-60 group-hover:opacity-100 transition-opacity" alt="Panorámica" />
-                                    <span className="absolute bottom-3 left-3 text-[10px] bg-black/80 px-2 py-1 rounded text-white font-bold">Panorámica 01/26</span>
-                                </div>
-                            </div>
+                {/* ── Content ─────────────────────────────────────────────── */}
+                <div className={`flex-1 overflow-hidden ${activeTab === 'consultas' ? '' : 'overflow-y-auto'}`}>
+                    {isLoading ? (
+                        <div className="flex items-center justify-center h-64">
+                            <Loader2 className="w-8 h-8 text-electric animate-spin" />
+                            <span className="ml-3 text-clinical/50">Cargando expediente...</span>
                         </div>
-                    )}
-
-                    {activeTab === 'odontograma' && (
-                        <div className="space-y-4 animate-in fade-in duration-300">
-                            <div className="flex items-center gap-2 bg-electric/5 border border-electric/20 rounded-xl px-4 py-2">
-                                <Activity className="w-4 h-4 text-electric" />
-                                <p className="text-electric text-sm font-bold">Odontograma + Periodontograma Interactivo</p>
-                                <span className="ml-auto text-[10px] text-clinical/40 uppercase tracking-widest">Haz clic en las superficies para marcar tratamientos</span>
-                            </div>
-                            <div className="w-full" style={{ minHeight: '600px' }}>
-                                <HybridChart />
-                            </div>
-                        </div>
-                    )}
-
-
-                    {activeTab === 'seguimiento' && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-in fade-in duration-300">
-                            <div>
-                                <h3 className="font-syne text-lg text-white mb-4">Notas de Evolución</h3>
-                                <div className="space-y-4">
-                                    <div className="border border-white/10 rounded-xl p-4 bg-white/5 border-l-4 border-l-electric">
-                                        <p className="text-[10px] text-clinical/50 mb-2 uppercase tracking-widest">Hace 2 días • Dr. A. Rivas</p>
-                                        <p className="text-sm text-clinical/90">Se realiza profilaxis profuna y detartraje. Instrucciones de higiene bucal. Cita de revisión programada en 6 meses.</p>
+                    ) : (
+                        <>
+                            {/* ══ HISTORIAL CLÍNICO ══ */}
+                            {activeTab === 'historial' && (
+                                <div className="p-6 space-y-6 overflow-y-auto h-full animate-in fade-in duration-300">
+                                    <div className="flex items-center justify-between">
+                                        <h3 className="font-syne text-lg text-white">Antecedentes Médicos</h3>
+                                        <button onClick={handleSaveHistory} disabled={isSavingHistory} className="flex items-center gap-2 bg-electric/10 border border-electric/30 text-electric text-xs font-bold px-4 py-2 rounded-lg hover:bg-electric/20 transition-all disabled:opacity-40">
+                                            {isSavingHistory ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />} Guardar Historial
+                                        </button>
                                     </div>
-                                    <div className="border border-white/10 rounded-xl p-4 bg-white/5 border-l-4 border-l-japandi-wood">
-                                        <p className="text-[10px] text-clinical/50 mb-2 uppercase tracking-widest">Hace 1 mes • Dra. S. Mendoza</p>
-                                        <p className="text-sm text-clinical/90">Diagnóstico preliminar para carillas. Toma de impresiones digitales.</p>
-                                    </div>
-                                    <textarea title="Texto" className="w-full h-32 bg-black/30 border border-white/10 rounded-xl p-4 text-clinical focus:border-electric outline-none mt-4" placeholder="Escribir nueva nota clínica..."></textarea>
-                                    <button className="bg-white/10 hover:bg-white/20 text-white text-sm font-bold py-2 px-4 rounded-lg transition-colors">Guardar Nota</button>
-                                </div>
-                            </div>
-                            <div>
-                                <h3 className="font-syne text-lg text-white mb-4 flex items-center gap-2"><Pill className="w-5 h-5" /> Recetario Electrónico</h3>
-                                <div className="bg-white p-6 rounded-2xl relative">
-                                    <div className="absolute top-0 right-0 p-4 opacity-10"><FileText className="w-24 h-24 text-black" /></div>
-                                    <p className="font-syne font-black text-black text-xl border-b border-black/10 pb-2 mb-4">RX</p>
-                                    <textarea title="Texto" className="w-full h-32 bg-transparent text-black placeholder:text-black/30 outline-none resize-none font-sans text-sm" placeholder="Ej. Amoxicilina 500mg, Tomar 1 cápsula cada 8 horas por 7 días..."></textarea>
-                                    <button className="bg-black hover:bg-black/80 text-white w-full text-sm font-bold py-3 rounded-lg transition-colors mt-2">Emitir Receta (PDF)</button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
 
-                    {activeTab === 'finanzas' && (
-                        <div className="max-w-xl mx-auto animate-in fade-in duration-300">
-                            <div className="bg-gradient-to-br from-white/10 to-white/5 border border-white/20 rounded-3xl p-8 shadow-2xl relative overflow-hidden">
-                                <div className="absolute -top-20 -right-20 w-64 h-64 bg-premium/20 rounded-full blur-3xl"></div>
-                                <h3 className="font-syne text-2xl text-white mb-6 flex items-center gap-3 relative z-10"><Landmark className="text-premium" /> Caja Centralizada</h3>
-
-                                {pagoAprobado ? (
-                                    <div className="bg-emerald-500/20 border border-emerald-500/50 p-6 rounded-2xl text-center relative z-10">
-                                        <div className="w-16 h-16 bg-emerald-500 text-white rounded-full flex items-center justify-center mx-auto mb-4 text-2xl font-black">✓</div>
-                                        <h4 className="font-syne text-xl font-bold text-emerald-400">Pago Ingresado con Éxito</h4>
-                                        <p className="text-sm text-clinical/70 mt-2">El saldo ha sido actualizado en la cuenta y el Historial de Finanzas de la clínica.</p>
-                                    </div>
-                                ) : (
-                                    <form onSubmit={handleCobroSubmit} className="space-y-5 relative z-10">
-                                        <div>
-                                            <label className="text-xs text-clinical/60 mb-1 block">Concepto del Cobro</label>
-                                            <input title="Campo" type="text" required value={conceptoCobro} onChange={e => setConceptoCobro(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white focus:border-premium transition-colors outline-none" />
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div className="space-y-3">
+                                            {([
+                                                { key: 'alergias',     label: 'Alergias a Medicamentos', color: 'red' },
+                                                { key: 'diabetes',     label: 'Diabetes',                color: 'orange' },
+                                                { key: 'hipertension', label: 'Hipertensión',            color: 'yellow' },
+                                                { key: 'cardiopatia',  label: 'Cardiopatía',             color: 'red' },
+                                                { key: 'embarazo',     label: 'Embarazo',                color: 'pink' },
+                                            ] as const).map(({ key, label, color }) => (
+                                                <label key={key} className={`flex items-center gap-3 p-3 border rounded-xl cursor-pointer transition-all ${medicalHistory[key] ? `border-${color}-500/50 bg-${color}-500/10` : 'border-white/10 bg-white/5'}`}>
+                                                    <input
+                                                        title={label} type="checkbox"
+                                                        checked={medicalHistory[key]}
+                                                        onChange={e => setMedicalHistory(h => ({ ...h, [key]: e.target.checked }))}
+                                                        className="w-5 h-5 rounded"
+                                                    />
+                                                    <span className={medicalHistory[key] ? 'text-white font-bold' : 'text-clinical/90'}>{label}</span>
+                                                </label>
+                                            ))}
                                         </div>
-
-                                        <div className="grid grid-cols-2 gap-4">
+                                        <div className="space-y-3">
                                             <div>
-                                                <label className="text-xs text-clinical/60 mb-1 block">Cuenta a Recibir</label>
-                                                <select title="Opciones" value={cuentaCobro} onChange={(e) => setCuentaCobro(e.target.value as AccountType)} className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white focus:border-premium transition-colors outline-none appearance-none">
-                                                    <option value="bbva">T. Crédito / BBVA</option>
-                                                    <option value="banorte">T. Débito / Banorte</option>
-                                                    <option value="revolut">Revolut Bank</option>
-                                                    <option value="cripto">Criptomonedas</option>
-                                                    <option value="efectivo">Efectivo Físico</option>
-                                                </select>
+                                                <label className="text-[10px] text-clinical/40 uppercase tracking-widest mb-1.5 block">Medicamentos actuales</label>
+                                                <textarea title="Medicamentos actuales"
+                                                    className="w-full min-h-[80px] bg-black/30 border border-white/10 rounded-xl p-4 text-clinical/80 focus:border-electric outline-none resize-none text-sm"
+                                                    placeholder="Lista de medicamentos que toma actualmente..."
+                                                    value={medicalHistory.medicamentos ?? ''}
+                                                    onChange={e => setMedicalHistory(h => ({ ...h, medicamentos: e.target.value }))}
+                                                />
                                             </div>
                                             <div>
-                                                <label className="text-xs text-clinical/60 mb-1 block">Monto a Cobrar (MXN)</label>
-                                                <div className="relative">
-                                                    <span className="absolute left-4 top-4 text-clinical/50 font-bold">$</span>
-                                                    <input title="Campo" type="number" required min="1" value={montoCobro} onChange={e => setMontoCobro(e.target.value)} placeholder="0.00" className="w-full bg-black/40 border border-white/10 rounded-xl pl-8 pr-4 py-4 text-white font-bold focus:border-premium transition-colors outline-none" />
+                                                <label className="text-[10px] text-clinical/40 uppercase tracking-widest mb-1.5 block">Notas adicionales</label>
+                                                <textarea title="Notas adicionales"
+                                                    className="w-full min-h-[80px] bg-black/30 border border-white/10 rounded-xl p-4 text-clinical/80 focus:border-electric outline-none resize-none text-sm"
+                                                    placeholder="Antecedentes adicionales, enfermedades sistémicas..."
+                                                    value={medicalHistory.notas ?? medicalHistory.notes ?? ''}
+                                                    onChange={e => setMedicalHistory(h => ({ ...h, notas: e.target.value }))}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Global files section */}
+                                    <div className="pt-6 border-t border-white/10">
+                                        <div className="flex items-center justify-between mb-4">
+                                            <h3 className="font-syne text-lg text-white">Archivos Generales</h3>
+                                            <p className="text-xs text-clinical/40">Radiografías, documentos e imágenes del expediente</p>
+                                            <button onClick={() => fileInputRef.current?.click()} disabled={isUploadingFile}
+                                                className="flex items-center gap-2 bg-white/5 border border-white/20 text-clinical text-xs font-bold px-4 py-2 rounded-lg hover:bg-white/10 transition-all disabled:opacity-40">
+                                                {isUploadingFile ? <Loader2 className="w-3 h-3 animate-spin" /> : <Camera className="w-3 h-3" />} Subir Archivo
+                                            </button>
+                                            <input ref={fileInputRef} type="file" title="Subir archivo" accept="image/*,.pdf" onChange={handleFileUpload} className="hidden" />
+                                        </div>
+                                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                                            {files.map(f => (
+                                                <div key={f.id} className="aspect-square border border-white/10 rounded-xl bg-black/50 p-2 relative group overflow-hidden">
+                                                    {f.url.match(/\.(jpg|jpeg|png|webp|gif)$/i)
+                                                        ? <img src={f.url} alt={f.name} className="w-full h-full object-cover rounded-lg opacity-70 group-hover:opacity-100 transition-opacity" />
+                                                        : <div className="w-full h-full flex flex-col items-center justify-center text-clinical/40"><FileText className="w-10 h-10 mb-1" /><span className="text-[9px] text-center break-all px-1">{f.name}</span></div>
+                                                    }
+                                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
+                                                        <a href={f.url} target="_blank" rel="noreferrer" className="text-[10px] text-white font-bold bg-electric/80 px-3 py-1 rounded-lg">Ver</a>
+                                                        <button onClick={() => handleDeleteFile(f)} className="text-[10px] text-red-400 font-bold bg-red-500/20 px-3 py-1 rounded-lg flex items-center gap-1"><Trash2 className="w-3 h-3" />Eliminar</button>
+                                                    </div>
+                                                    <span className="absolute bottom-2 left-2 right-2 text-[9px] bg-black/80 px-1.5 py-0.5 rounded text-white font-bold truncate">{f.name}</span>
                                                 </div>
+                                            ))}
+                                            <div onClick={() => fileInputRef.current?.click()} className="aspect-square border-2 border-dashed border-white/20 rounded-xl flex flex-col items-center justify-center text-clinical/50 bg-white/5 hover:bg-white/10 transition-colors cursor-pointer">
+                                                <Camera className="w-8 h-8 mb-2" />
+                                                <span className="text-xs text-center px-2">Subir Archivo</span>
                                             </div>
                                         </div>
+                                    </div>
+                                </div>
+                            )}
 
-                                        {cuentaCobro === 'cripto' && (
-                                            <div className="bg-japandi-wood/10 border border-japandi-wood/30 p-4 rounded-xl">
-                                                <label className="text-xs text-japandi-wood mb-2 block">Seleccione Red Crypto</label>
-                                                <select title="Opciones" value={cryptoType} onChange={(e) => setCryptoType(e.target.value)} className="w-full bg-black/40 border border-japandi-wood/30 rounded-lg p-3 text-white focus:border-japandi-wood outline-none mb-3">
-                                                    <option value="MXN">Peso Mexicano Digital (Bitso - 0%)</option>
-                                                    <option value="USDT">USDT (TRC20)</option>
-                                                    <option value="BTC">Bitcoin</option>
-                                                    <option value="ETH">Ethereum (ERC20)</option>
-                                                </select>
-                                                {montoCobro && (
-                                                    <p className="text-[10px] text-japanese-sand italic">
-                                                        {cryptoType === 'MXN'
-                                                            ? `Transacción sin comisiones (Bitso). La clínica recibirá $${Number(montoCobro).toLocaleString()} MXN netos.`
-                                                            : `La clínica recibirá $${(Number(montoCobro) * 0.985).toLocaleString()} MXN netos después de las comisiones de conversión del 1.5%.`
-                                                        }
-                                                    </p>
-                                                )}
+                            {/* ══ ODONTOGRAMA / PERIO ══ */}
+                            {activeTab === 'odontograma' && (
+                                <div className="p-6 space-y-4 overflow-y-auto h-full animate-in fade-in duration-300">
+                                    <div className="flex items-center gap-2 bg-electric/5 border border-electric/20 rounded-xl px-4 py-2">
+                                        <Activity className="w-4 h-4 text-electric" />
+                                        <p className="text-electric text-sm font-bold">Odontograma + Periodontograma Interactivo</p>
+                                        <span className="ml-auto text-[10px] text-clinical/40 uppercase tracking-widest">Haz clic en las superficies para marcar tratamientos</span>
+                                    </div>
+                                    <div className="w-full min-h-[600px]">
+                                        <HybridChart patientId={patientId} />
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* ══ CONSULTAS ══ */}
+                            {activeTab === 'consultas' && (
+                                <div className="flex h-full animate-in fade-in duration-300">
+                                    {/* Left: Visit list */}
+                                    <div className="w-72 flex-shrink-0 border-r border-white/10 flex flex-col">
+                                        <div className="p-4 border-b border-white/10 flex-shrink-0">
+                                            <button onClick={handleCreateVisit} className="w-full bg-electric/10 border border-electric/30 text-electric text-xs font-bold px-4 py-2.5 rounded-xl hover:bg-electric/20 transition-all flex items-center justify-center gap-2">
+                                                <Plus className="w-4 h-4" /> Nueva Consulta
+                                            </button>
+                                        </div>
+                                        <div className="flex-1 overflow-y-auto py-1">
+                                            {sortedVisits.length === 0 ? (
+                                                <div className="text-center py-12 px-4">
+                                                    <BriefcaseMedical className="w-8 h-8 text-clinical/20 mx-auto mb-2" />
+                                                    <p className="text-clinical/30 text-xs">Sin consultas registradas</p>
+                                                    <p className="text-clinical/20 text-[10px] mt-1">Crea la primera consulta con el botón de arriba</p>
+                                                </div>
+                                            ) : sortedVisits.map(visit => {
+                                                const isSelected = visit.id === selectedVisitId;
+                                                return (
+                                                    <button
+                                                        key={visit.id}
+                                                        onClick={() => setSelectedVisitId(visit.id)}
+                                                        className={`w-full text-left px-4 py-3 transition-all border-l-2 ${isSelected ? 'bg-blue-500/10 border-blue-400' : 'border-transparent hover:bg-white/5 hover:border-white/20'}`}
+                                                    >
+                                                        <div className="flex items-center gap-2 mb-1">
+                                                            <div className={`w-2 h-2 rounded-full flex-shrink-0 ${VISIT_STATUS_DOT[visit.status]}`} />
+                                                            <span className={`text-xs font-bold ${isSelected ? 'text-blue-300' : 'text-white'}`}>
+                                                                {formatVisitDate(visit.date)}
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-[10px] text-clinical/50 ml-4 truncate">Dr. {visit.doctorName}</p>
+                                                        {visit.chiefComplaint && (
+                                                            <p className="text-[10px] text-clinical/40 ml-4 truncate mt-0.5">{visit.chiefComplaint}</p>
+                                                        )}
+                                                        {(visit.prescription?.medications?.length || visit.files.length > 0) && (
+                                                            <div className="flex gap-1.5 ml-4 mt-1.5">
+                                                                {(visit.prescription?.medications?.length ?? 0) > 0 && (
+                                                                    <span className="text-[8px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded font-bold">Rx</span>
+                                                                )}
+                                                                {visit.files.length > 0 && (
+                                                                    <span className="text-[8px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded font-bold">{visit.files.length} arch.</span>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+
+                                    {/* Right: Visit detail */}
+                                    <div className="flex-1 overflow-y-auto p-6">
+                                        {selectedVisit ? (
+                                            <VisitRecord
+                                                visit={selectedVisit}
+                                                patientId={patientId}
+                                                onSave={handleSaveVisit}
+                                                canDelete={selectedVisit.doctorId === currentUserId || !!(currentDoctor as any)?.isMasterAdmin}
+                                                onDelete={() => handleDeleteVisit(selectedVisit.id)}
+                                            />
+                                        ) : (
+                                            <div className="h-full flex flex-col items-center justify-center text-clinical/30">
+                                                <BriefcaseMedical className="w-12 h-12 mb-3 opacity-30" />
+                                                <p className="text-sm">Selecciona una consulta o crea una nueva</p>
                                             </div>
                                         )}
+                                    </div>
+                                </div>
+                            )}
 
-                                        <button type="submit" disabled={isSaving} className="w-full py-4 rounded-xl bg-premium text-cobalt font-black text-lg hover:opacity-90 transition-opacity mt-4 flex justify-center items-center shadow-[0_0_20px_rgba(212,175,55,0.4)]">
-                                            {isSaving ? <span className="w-6 h-6 border-2 border-cobalt/30 border-t-cobalt rounded-full animate-spin"></span> : 'Procesar Cobro'}
-                                        </button>
-                                        <p className="text-center text-[10px] text-clinical/40 mt-2">El cobro impactará inmediatamente los reportes financieros de la clínica.</p>
-                                    </form>
-                                )}
-                            </div>
-                        </div>
+                            {/* ══ PLAN DE TRATAMIENTO ══ */}
+                            {activeTab === 'plan_tratamiento' && (
+                                <div className="p-6 overflow-y-auto h-full animate-in fade-in duration-300">
+                                    <div className="flex items-center gap-2 bg-electric/5 border border-electric/20 rounded-xl px-4 py-2 mb-6">
+                                        <Layers className="w-4 h-4 text-electric" />
+                                        <p className="text-electric text-sm font-bold">Pipeline de Tratamiento</p>
+                                        <span className="ml-auto text-[10px] text-clinical/40 uppercase tracking-widest">
+                                            Plan médico completo con seguimiento por fases
+                                        </span>
+                                    </div>
+                                    <TreatmentPipeline plan={treatmentPlan} onSave={handleSaveTreatmentPlan} />
+                                </div>
+                            )}
+
+                            {/* ══ CAJA ══ */}
+                            {activeTab === 'finanzas' && (
+                                <div className="p-6 overflow-y-auto h-full animate-in fade-in duration-300">
+                                    <div className="max-w-xl mx-auto">
+                                        <div className="bg-gradient-to-br from-white/10 to-white/5 border border-white/20 rounded-3xl p-8 shadow-2xl relative overflow-hidden">
+                                            <div className="absolute -top-20 -right-20 w-64 h-64 bg-premium/20 rounded-full blur-3xl"></div>
+                                            <h3 className="font-syne text-2xl text-white mb-6 flex items-center gap-3 relative z-10">
+                                                <Landmark className="text-premium" /> Caja Centralizada
+                                            </h3>
+                                            {pagoAprobado ? (
+                                                <div className="bg-emerald-500/20 border border-emerald-500/50 p-6 rounded-2xl text-center relative z-10">
+                                                    <div className="w-16 h-16 bg-emerald-500 text-white rounded-full flex items-center justify-center mx-auto mb-4 text-2xl font-black">✓</div>
+                                                    <h4 className="font-syne text-xl font-bold text-emerald-400">Pago Ingresado con Éxito</h4>
+                                                    <p className="text-sm text-clinical/70 mt-2">El saldo ha sido actualizado en los reportes financieros.</p>
+                                                </div>
+                                            ) : (
+                                                <form onSubmit={handleCobroSubmit} className="space-y-5 relative z-10">
+                                                    <div>
+                                                        <label className="text-xs text-clinical/60 mb-1 block">Concepto del Cobro</label>
+                                                        <input title="Concepto" type="text" required value={conceptoCobro} onChange={e => setConceptoCobro(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white focus:border-premium transition-colors outline-none" />
+                                                    </div>
+                                                    <div className="grid grid-cols-2 gap-4">
+                                                        <div>
+                                                            <label className="text-xs text-clinical/60 mb-1 block">Cuenta</label>
+                                                            <select title="Cuenta" value={cuentaCobro} onChange={e => setCuentaCobro(e.target.value as AccountType)} className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white focus:border-premium transition-colors outline-none appearance-none">
+                                                                <option value="bbva">T. Crédito / BBVA</option>
+                                                                <option value="banorte">T. Débito / Banorte</option>
+                                                                <option value="revolut">Revolut Bank</option>
+                                                                <option value="cripto">Criptomonedas</option>
+                                                                <option value="efectivo">Efectivo</option>
+                                                            </select>
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-xs text-clinical/60 mb-1 block">Monto (MXN)</label>
+                                                            <div className="relative">
+                                                                <span className="absolute left-4 top-4 text-clinical/50 font-bold">$</span>
+                                                                <input title="Monto" type="number" required min="1" value={montoCobro} onChange={e => setMontoCobro(e.target.value)} placeholder="0.00" className="w-full bg-black/40 border border-white/10 rounded-xl pl-8 pr-4 py-4 text-white font-bold focus:border-premium transition-colors outline-none" />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    {cuentaCobro === 'cripto' && (
+                                                        <div className="bg-japandi-wood/10 border border-japandi-wood/30 p-4 rounded-xl">
+                                                            <label className="text-xs text-japandi-wood mb-2 block">Red Crypto</label>
+                                                            <select title="Red" value={cryptoType} onChange={e => setCryptoType(e.target.value)} className="w-full bg-black/40 border border-japandi-wood/30 rounded-lg p-3 text-white focus:border-japandi-wood outline-none mb-3">
+                                                                <option value="MXN">Peso Mexicano Digital (Bitso - 0%)</option>
+                                                                <option value="USDT">USDT (TRC20)</option>
+                                                                <option value="BTC">Bitcoin</option>
+                                                                <option value="ETH">Ethereum (ERC20)</option>
+                                                            </select>
+                                                            {montoCobro && (
+                                                                <p className="text-[10px] text-japanese-sand italic">
+                                                                    {cryptoType === 'MXN'
+                                                                        ? `Sin comisiones (Bitso). Recibirá $${Number(montoCobro).toLocaleString()} MXN netos.`
+                                                                        : `Recibirá $${(Number(montoCobro) * 0.985).toLocaleString()} MXN netos (1.5% comisión).`
+                                                                    }
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                    <button type="submit" disabled={isSavingPago} className="w-full py-4 rounded-xl bg-premium text-cobalt font-black text-lg hover:opacity-90 transition-opacity mt-4 flex justify-center items-center shadow-[0_0_20px_rgba(212,175,55,0.4)]">
+                                                        {isSavingPago ? <span className="w-6 h-6 border-2 border-cobalt/30 border-t-cobalt rounded-full animate-spin"></span> : 'Procesar Cobro'}
+                                                    </button>
+                                                    <p className="text-center text-[10px] text-clinical/40 mt-2">El cobro impacta inmediatamente los reportes financieros de la clínica.</p>
+                                                </form>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </>
                     )}
                 </div>
-            </motion.div >
+            </motion.div>
 
-            {/* AI Clinical Viewer Modal */}
-            < AIClinicalViewer
-                isOpen={isAIViewerOpen}
-                onClose={() => setIsAIViewerOpen(false)}
-                patientName={patientName}
-            />
-        </div >
+            <AIClinicalViewer isOpen={isAIViewerOpen} onClose={() => setIsAIViewerOpen(false)} patientName={patientName} />
+        </div>
     );
 };
