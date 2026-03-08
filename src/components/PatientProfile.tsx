@@ -37,8 +37,16 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patie
     const { currentUserId, clinicProfile, patients } = useMarket();
     const currentDoctor = clinicProfile?.staff?.find(s => s.id === currentUserId);
     const patient = patients.find(p => p.id === patientId);
-    const hasMedAlert  = patient?.alertaMedica  && patient.alertaMedica  !== 'Sin alerta';
-    const hasAdminAlert = patient?.alertaAdministrativa && patient.alertaAdministrativa !== 'Sin alerta';
+    const hasMedAlert  = patient?.alertaMedica  && patient.alertaMedica  !== 'Sin alerta' && patient.alertaMedica !== '';
+    // Admin alert: use configured alert from patient data, or auto-detect real adeudo (saldo < 0)
+    const configuredAdminAlert = patient?.alertaAdministrativa && patient.alertaAdministrativa !== 'Sin alerta' && patient.alertaAdministrativa !== ''
+        ? patient.alertaAdministrativa
+        : null;
+    const adeudoAlert = (patient?.saldo !== undefined && patient.saldo < 0)
+        ? `Saldo deudor: $${Math.abs(patient.saldo).toLocaleString('es-MX')}`
+        : null;
+    const adminAlertText = configuredAdminAlert ?? adeudoAlert;
+    const hasAdminAlert = !!adminAlertText;
 
     const [activeTab, setActiveTab] = useState<TabId>('historial');
     const [isAIViewerOpen, setIsAIViewerOpen] = useState(false);
@@ -258,7 +266,7 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patie
                                 <ShieldAlert className="w-4 h-4 text-amber-400 flex-shrink-0" />
                                 <div>
                                     <p className="text-[9px] text-amber-400/70 uppercase tracking-widest font-bold">Alerta Administrativa</p>
-                                    <p className="text-amber-300 text-sm font-bold leading-tight">{patient?.alertaAdministrativa}</p>
+                                    <p className="text-amber-300 text-sm font-bold leading-tight">{adminAlertText}</p>
                                 </div>
                             </div>
                         )}
@@ -313,7 +321,7 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patie
                                                     </div>
                                                     <div>
                                                         <p className="text-[10px] text-amber-400/70 uppercase tracking-widest font-bold mb-0.5">⚠ Alerta Administrativa</p>
-                                                        <p className="text-amber-300 font-bold text-base">{patient?.alertaAdministrativa}</p>
+                                                        <p className="text-amber-300 font-bold text-base">{adminAlertText}</p>
                                                         <p className="text-amber-400/50 text-[10px] mt-1">Verificar situación antes de procesar cobros o emitir facturas</p>
                                                     </div>
                                                 </div>
