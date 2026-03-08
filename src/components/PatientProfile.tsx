@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
     User, Activity, FileText, BriefcaseMedical, Landmark, Camera,
     Sparkles, Trash2, Loader2, CheckCircle2, Plus, Layers,
+    AlertTriangle, ShieldAlert,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { addTransaction, AccountType } from '../lib/financeApi';
@@ -33,8 +34,11 @@ const VISIT_STATUS_DOT: Record<VisitStatus, string> = {
 type TabId = 'historial' | 'odontograma' | 'consultas' | 'plan_tratamiento' | 'finanzas';
 
 export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patientName, onClose }) => {
-    const { currentUserId, clinicProfile } = useMarket();
+    const { currentUserId, clinicProfile, patients } = useMarket();
     const currentDoctor = clinicProfile?.staff?.find(s => s.id === currentUserId);
+    const patient = patients.find(p => p.id === patientId);
+    const hasMedAlert  = patient?.alertaMedica  && patient.alertaMedica  !== 'Sin alerta';
+    const hasAdminAlert = patient?.alertaAdministrativa && patient.alertaAdministrativa !== 'Sin alerta';
 
     const [activeTab, setActiveTab] = useState<TabId>('historial');
     const [isAIViewerOpen, setIsAIViewerOpen] = useState(false);
@@ -237,6 +241,30 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patie
                     </div>
                 </div>
 
+                {/* ── Alert banners (persistent across all tabs) ──────────── */}
+                {(hasMedAlert || hasAdminAlert) && (
+                    <div className="flex gap-2 px-6 pt-3 pb-1 flex-shrink-0 flex-wrap">
+                        {hasMedAlert && (
+                            <div className="flex items-center gap-2 bg-red-500/15 border border-red-500/40 rounded-xl px-4 py-2 flex-1 min-w-[220px]">
+                                <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" />
+                                <div>
+                                    <p className="text-[9px] text-red-400/70 uppercase tracking-widest font-bold">Alerta Médica</p>
+                                    <p className="text-red-300 text-sm font-bold leading-tight">{patient?.alertaMedica}</p>
+                                </div>
+                            </div>
+                        )}
+                        {hasAdminAlert && (
+                            <div className="flex items-center gap-2 bg-amber-500/15 border border-amber-500/40 rounded-xl px-4 py-2 flex-1 min-w-[220px]">
+                                <ShieldAlert className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                                <div>
+                                    <p className="text-[9px] text-amber-400/70 uppercase tracking-widest font-bold">Alerta Administrativa</p>
+                                    <p className="text-amber-300 text-sm font-bold leading-tight">{patient?.alertaAdministrativa}</p>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+
                 {/* ── Tabs ────────────────────────────────────────────────── */}
                 <div className="flex border-b border-white/10 px-6 flex-shrink-0 overflow-x-auto">
                     {TABS.map(tab => (
@@ -262,6 +290,37 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patie
                             {/* ══ HISTORIAL CLÍNICO ══ */}
                             {activeTab === 'historial' && (
                                 <div className="p-6 space-y-6 overflow-y-auto h-full animate-in fade-in duration-300">
+
+                                    {/* Active alert detail cards */}
+                                    {(hasMedAlert || hasAdminAlert) && (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            {hasMedAlert && (
+                                                <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-4 flex gap-3">
+                                                    <div className="w-10 h-10 rounded-xl bg-red-500/20 flex items-center justify-center flex-shrink-0">
+                                                        <AlertTriangle className="w-5 h-5 text-red-400" />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[10px] text-red-400/70 uppercase tracking-widest font-bold mb-0.5">⚠ Alerta Médica Activa</p>
+                                                        <p className="text-red-300 font-bold text-base">{patient?.alertaMedica}</p>
+                                                        <p className="text-red-400/50 text-[10px] mt-1">Verificar antes de administrar cualquier medicamento o tratamiento</p>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {hasAdminAlert && (
+                                                <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex gap-3">
+                                                    <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+                                                        <ShieldAlert className="w-5 h-5 text-amber-400" />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[10px] text-amber-400/70 uppercase tracking-widest font-bold mb-0.5">⚠ Alerta Administrativa</p>
+                                                        <p className="text-amber-300 font-bold text-base">{patient?.alertaAdministrativa}</p>
+                                                        <p className="text-amber-400/50 text-[10px] mt-1">Verificar situación antes de procesar cobros o emitir facturas</p>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
                                     <div className="flex items-center justify-between">
                                         <h3 className="font-syne text-lg text-white">Antecedentes Médicos</h3>
                                         <button onClick={handleSaveHistory} disabled={isSavingHistory} className="flex items-center gap-2 bg-electric/10 border border-electric/30 text-electric text-xs font-bold px-4 py-2 rounded-lg hover:bg-electric/20 transition-all disabled:opacity-40">
