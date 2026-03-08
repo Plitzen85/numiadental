@@ -5,7 +5,7 @@ import { X, Printer, Link2 } from 'lucide-react';
 
 import { useMarket } from '../context/MarketContext';
 import { printPatientRecord, getOrCreateToken } from '../utils/patientPrint';
-import { loadPatientRecord, savePatientRecord } from '../lib/supabase';
+import { loadPatientRecord, savePatientRecord, PatientMedicalHistory } from '../lib/supabase';
 
 export const PatientProfileForm: React.FC<{ isOpen: boolean; onClose: () => void; patientId?: string }> = ({ isOpen, onClose, patientId }) => {
     const { patients, setPatients, clinicProfile } = useMarket();
@@ -18,17 +18,47 @@ export const PatientProfileForm: React.FC<{ isOpen: boolean; onClose: () => void
 
     const currentPatient = patientId ? patients.find(p => p.id === patientId) : undefined;
 
+    const CLINICAL_KEYS = (state: Record<string, string>) =>
+        Object.keys(state).filter(k =>
+            k.startsWith('bool_') || k.startsWith('radio_') ||
+            ['text_15','text_16','text_17','text_18','text_19','text_20','text_21','text_22',
+             'text_23','text_24','text_25','text_26','text_27','text_28','text_29','text_30',
+             'text_31','text_32','text_33','select_4','select_5'].includes(k)
+        );
+
+    const saveClinicalData = async (id: string): Promise<Record<string, string>> => {
+        const keys = CLINICAL_KEYS(formState);
+        const clinicalFormState = Object.fromEntries(keys.map(k => [k, formState[k]]));
+        if (keys.length > 0) await savePatientRecord(id, { clinicalFormState });
+        return clinicalFormState;
+    };
+
     const handlePrint = async () => {
         if (!currentPatient) return;
-        // Always load the latest saved clinical data from Supabase before printing
-        let state = formState;
-        if (patientId) {
-            const record = await loadPatientRecord(patientId);
-            if (record.clinicalFormState) {
-                state = { ...formState, ...record.clinicalFormState };
-            }
-        }
-        printPatientRecord(currentPatient, clinicProfile?.nombre ?? 'Nümia Dental', undefined, state);
+        const record = patientId ? await loadPatientRecord(patientId) : null;
+        const clinicalState = record?.clinicalFormState
+            ? { ...formState, ...record.clinicalFormState }
+            : formState;
+        printPatientRecord(
+            currentPatient,
+            clinicProfile?.nombre ?? 'Nümia Dental',
+            record?.medicalHistory as PatientMedicalHistory | undefined,
+            clinicalState
+        );
+    };
+
+    const handleSaveAndPrint = async () => {
+        if (!currentPatient) return;
+        const [clinicalFormState, record] = await Promise.all([
+            saveClinicalData(currentPatient.id),
+            loadPatientRecord(currentPatient.id),
+        ]);
+        printPatientRecord(
+            currentPatient,
+            clinicProfile?.nombre ?? 'Nümia Dental',
+            record?.medicalHistory as PatientMedicalHistory | undefined,
+            { ...formState, ...clinicalFormState }
+        );
     };
 
     const handleGenerateLink = () => {
@@ -119,18 +149,7 @@ export const PatientProfileForm: React.FC<{ isOpen: boolean; onClose: () => void
             return [...prev, newPatient as any];
         });
 
-        // Persist clinical questionnaire answers to patient_records
-        const clinicalKeys = Object.keys(formState).filter(k =>
-            k.startsWith('bool_') || k.startsWith('radio_') ||
-            ['text_15','text_16','text_17','text_18','text_19','text_20','text_21','text_22',
-             'text_23','text_24','text_25','text_26','text_27','text_28','text_29','text_30',
-             'text_31','text_32','text_33','select_4','select_5'].includes(k)
-        );
-        if (clinicalKeys.length > 0) {
-            const clinicalFormState = Object.fromEntries(clinicalKeys.map(k => [k, formState[k]]));
-            savePatientRecord(newPatient.id, { clinicalFormState });
-        }
-
+        saveClinicalData(newPatient.id);
         handleClose();
     };
 
@@ -545,11 +564,16 @@ export const PatientProfileForm: React.FC<{ isOpen: boolean; onClose: () => void
                                 <input title="Campo" value={formState["text_33"] || ""} onChange={e => handleInput("text_33", e.target.value)} type="text" placeholder="Escribe aquí" className="w-full bg-gray-50 border border-gray-200 rounded-md p-2 text-sm focus:border-electric outline-none transition-colors" />
                             </div>
 
-                            {/* Save button for clinical tab */}
-                            <div className="flex justify-center pt-8 pb-4">
+                            {/* Save / Print buttons for clinical tab */}
+                            <div className="flex justify-center gap-3 pt-8 pb-4">
                                 <button type="button" onClick={handleSave} className="bg-emerald-300/80 hover:bg-emerald-400 text-white font-bold py-2 px-10 rounded-md transition-colors shadow-sm">
                                     Guardar Historial
                                 </button>
+                                {currentPatient && (
+                                    <button type="button" onClick={handleSaveAndPrint} className="flex items-center gap-2 bg-[#00d4ff]/80 hover:bg-[#00d4ff] text-[#0a0a1a] font-bold py-2 px-6 rounded-md transition-colors shadow-sm">
+                                        <Printer className="w-4 h-4" /> Guardar e Imprimir
+                                    </button>
+                                )}
                             </div>
 
                             {/* Signatures */}
