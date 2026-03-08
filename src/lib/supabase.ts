@@ -130,7 +130,7 @@ export interface PatientVisit {
 
 // ─── Treatment Plan types ─────────────────────────────────────────────────────
 
-export type TreatmentStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
+export type TreatmentStatus = 'pending' | 'in_progress' | 'completed' | 'paid' | 'cancelled';
 
 export interface TreatmentPlanItem {
     id: string;

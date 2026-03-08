@@ -1,18 +1,30 @@
 import React, { useState } from 'react';
-import { Plus, Trash2, Edit2, Check, Clock, XCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Edit2, Check, Clock, XCircle, AlertCircle, Loader2, DollarSign, ChevronDown, ChevronRight } from 'lucide-react';
 import { TreatmentPlan, TreatmentPlanItem, TreatmentStatus } from '../../lib/supabase';
+import { useMarket, StaffMember, isDoctor } from '../../context/MarketContext';
 
 // ─── Status config ────────────────────────────────────────────────────────────
 const STATUS_CONFIG: Record<TreatmentStatus, {
     label: string; color: string; bg: string; border: string; icon: React.ReactNode;
 }> = {
-    pending:     { label: 'Pendiente',   color: 'text-yellow-400',  bg: 'bg-yellow-500/10',  border: 'border-yellow-500/30',  icon: <Clock       className="w-3.5 h-3.5" /> },
-    in_progress: { label: 'En Proceso',  color: 'text-blue-400',    bg: 'bg-blue-500/10',    border: 'border-blue-500/30',    icon: <AlertCircle className="w-3.5 h-3.5" /> },
-    completed:   { label: 'Completado',  color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', icon: <Check       className="w-3.5 h-3.5" /> },
-    cancelled:   { label: 'Cancelado',   color: 'text-gray-500',    bg: 'bg-gray-500/10',    border: 'border-gray-500/30',    icon: <XCircle     className="w-3.5 h-3.5" /> },
+    pending:     { label: 'Pendiente',   color: 'text-yellow-400',  bg: 'bg-yellow-500/10',   border: 'border-yellow-500/30',  icon: <Clock        className="w-3.5 h-3.5" /> },
+    in_progress: { label: 'En Proceso',  color: 'text-blue-400',    bg: 'bg-blue-500/10',     border: 'border-blue-500/30',    icon: <AlertCircle  className="w-3.5 h-3.5" /> },
+    completed:   { label: 'Completado',  color: 'text-emerald-400', bg: 'bg-emerald-500/10',  border: 'border-emerald-500/30', icon: <Check        className="w-3.5 h-3.5" /> },
+    paid:        { label: 'Pagado',      color: 'text-teal-300',    bg: 'bg-teal-500/10',     border: 'border-teal-500/30',    icon: <DollarSign   className="w-3.5 h-3.5" /> },
+    cancelled:   { label: 'Cancelado',   color: 'text-gray-500',    bg: 'bg-gray-500/10',     border: 'border-gray-500/30',    icon: <XCircle      className="w-3.5 h-3.5" /> },
 };
 
-const ALL_STATUSES: TreatmentStatus[] = ['pending', 'in_progress', 'completed', 'cancelled'];
+// Logical next-step transitions per status (what buttons to show on the card)
+const NEXT_STATUSES: Record<TreatmentStatus, TreatmentStatus[]> = {
+    pending:     ['in_progress', 'cancelled'],
+    in_progress: ['completed', 'pending', 'cancelled'],
+    completed:   ['paid', 'in_progress'],
+    paid:        [],                               // final — no further movement
+    cancelled:   ['pending'],                      // reactivate only
+};
+
+// Pipeline columns (cancelled is shown separately below)
+const PIPELINE_STATUSES: TreatmentStatus[] = ['pending', 'in_progress', 'completed', 'paid'];
 
 const blankItem = (): Partial<TreatmentPlanItem> => ({
     name: '', phase: 1, status: 'pending', price: 0, discount: 0, notes: '', doctorName: '',
@@ -26,9 +38,13 @@ interface TreatmentPipelineProps {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export const TreatmentPipeline: React.FC<TreatmentPipelineProps> = ({ plan, onSave }) => {
-    const [editingItem, setEditingItem] = useState<Partial<TreatmentPlanItem> | null>(null);
-    const [planNotes, setPlanNotes] = useState(plan.notes);
-    const [isSaving, setIsSaving] = useState(false);
+    const { clinicProfile } = useMarket();
+    const doctors: StaffMember[] = (clinicProfile?.staff ?? []).filter(isDoctor);
+
+    const [editingItem, setEditingItem]       = useState<Partial<TreatmentPlanItem> | null>(null);
+    const [planNotes, setPlanNotes]           = useState(plan.notes);
+    const [isSaving, setIsSaving]             = useState(false);
+    const [showCancelled, setShowCancelled]   = useState(false);
 
     const savePlan = async (items: TreatmentPlanItem[], notes = planNotes) => {
         setIsSaving(true);
@@ -39,7 +55,7 @@ export const TreatmentPipeline: React.FC<TreatmentPipelineProps> = ({ plan, onSa
     const updateStatus = async (id: string, status: TreatmentStatus) => {
         const updated = plan.items.map(item =>
             item.id === id
-                ? { ...item, status, ...(status === 'completed' ? { completedDate: new Date().toISOString() } : {}) }
+                ? { ...item, status, ...(status === 'completed' || status === 'paid' ? { completedDate: new Date().toISOString() } : {}) }
                 : item
         );
         await savePlan(updated);
@@ -79,9 +95,11 @@ export const TreatmentPipeline: React.FC<TreatmentPipelineProps> = ({ plan, onSa
     const itemFinalPrice = (i: TreatmentPlanItem) => i.price - (i.price * (i.discount / 100));
     const activeItems    = plan.items.filter(i => i.status !== 'cancelled');
     const totalPlan      = activeItems.reduce((s, i) => s + itemFinalPrice(i), 0);
-    const totalCompleted = plan.items.filter(i => i.status === 'completed').reduce((s, i) => s + itemFinalPrice(i), 0);
-    const totalAdeudo    = totalPlan - totalCompleted;
+    const totalPaid      = plan.items.filter(i => i.status === 'paid').reduce((s, i) => s + itemFinalPrice(i), 0);
+    const totalCompleted = plan.items.filter(i => i.status === 'completed' || i.status === 'paid').reduce((s, i) => s + itemFinalPrice(i), 0);
+    const totalAdeudo    = totalPlan - totalPaid;
     const progress       = totalPlan > 0 ? (totalCompleted / totalPlan) * 100 : 0;
+    const cancelledItems = plan.items.filter(i => i.status === 'cancelled');
 
     return (
         <div className="space-y-5">
@@ -94,21 +112,24 @@ export const TreatmentPipeline: React.FC<TreatmentPipelineProps> = ({ plan, onSa
                     <p className="text-[10px] text-clinical/40 mt-1">{activeItems.length} tratamientos</p>
                 </div>
                 <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4">
-                    <p className="text-[10px] text-emerald-400/70 uppercase tracking-widest mb-1">Completado</p>
+                    <p className="text-[10px] text-emerald-400/70 uppercase tracking-widest mb-1">Realizados</p>
                     <p className="font-syne text-xl font-bold text-emerald-400">${totalCompleted.toLocaleString('es-MX')}</p>
-                    <p className="text-[10px] text-emerald-400/60 mt-1">{plan.items.filter(i => i.status === 'completed').length} realizados</p>
+                    <p className="text-[10px] text-emerald-400/60 mt-1">{plan.items.filter(i => i.status === 'completed' || i.status === 'paid').length} completados</p>
                 </div>
-                <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-4">
-                    <p className="text-[10px] text-red-400/70 uppercase tracking-widest mb-1">Adeudo</p>
-                    <p className="font-syne text-xl font-bold text-red-400">${totalAdeudo.toLocaleString('es-MX')}</p>
-                    <p className="text-[10px] text-red-400/60 mt-1">{plan.items.filter(i => i.status === 'pending' || i.status === 'in_progress').length} pendientes</p>
+                <div className="bg-teal-500/10 border border-teal-500/20 rounded-2xl p-4">
+                    <p className="text-[10px] text-teal-400/70 uppercase tracking-widest mb-1">Cobrado</p>
+                    <p className="font-syne text-xl font-bold text-teal-300">${totalPaid.toLocaleString('es-MX')}</p>
+                    <p className="text-[10px] text-teal-400/60 mt-1">{plan.items.filter(i => i.status === 'paid').length} pagados</p>
                 </div>
                 <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
-                    <p className="text-[10px] text-clinical/40 uppercase tracking-widest mb-1">Avance</p>
-                    <p className="font-syne text-xl font-bold text-white">{progress.toFixed(0)}%</p>
+                    <p className="text-[10px] text-clinical/40 uppercase tracking-widest mb-1">Adeudo</p>
+                    <p className={`font-syne text-xl font-bold ${totalAdeudo > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                        ${totalAdeudo.toLocaleString('es-MX')}
+                    </p>
                     <div className="mt-2 h-1.5 bg-black/30 rounded-full overflow-hidden">
                         <div className="h-full bg-electric rounded-full transition-all duration-700" style={{ width: `${progress}%` }} />
                     </div>
+                    <p className="text-[9px] text-clinical/30 mt-1">{progress.toFixed(0)}% avance</p>
                 </div>
             </div>
 
@@ -121,16 +142,14 @@ export const TreatmentPipeline: React.FC<TreatmentPipelineProps> = ({ plan, onSa
                 {isSaving && <Loader2 className="w-3 h-3 animate-spin ml-2 text-clinical/40" />}
             </button>
 
-            {/* ── Kanban board ─────────────────────────────────────────────── */}
+            {/* ── Kanban pipeline (4 active columns) ───────────────────────── */}
             <div className="grid grid-cols-4 gap-3 min-h-[260px]">
-                {ALL_STATUSES.map(status => {
+                {PIPELINE_STATUSES.map(status => {
                     const cfg   = STATUS_CONFIG[status];
                     const items = plan.items.filter(i => i.status === status);
                     const colTotal = items.reduce((s, i) => s + itemFinalPrice(i), 0);
-
                     return (
                         <div key={status} className={`border rounded-2xl p-3 ${cfg.bg} ${cfg.border}`}>
-                            {/* Column header */}
                             <div className={`flex items-center gap-2 mb-2 pb-2 border-b ${cfg.border}`}>
                                 <span className={cfg.color}>{cfg.icon}</span>
                                 <span className={`text-[11px] font-bold uppercase tracking-wide ${cfg.color}`}>{cfg.label}</span>
@@ -141,8 +160,6 @@ export const TreatmentPipeline: React.FC<TreatmentPipelineProps> = ({ plan, onSa
                                     ${colTotal.toLocaleString('es-MX')}
                                 </p>
                             )}
-
-                            {/* Treatment cards */}
                             <div className="space-y-2">
                                 {items.map(item => (
                                     <TreatmentCard
@@ -163,6 +180,35 @@ export const TreatmentPipeline: React.FC<TreatmentPipelineProps> = ({ plan, onSa
                 })}
             </div>
 
+            {/* ── Cancelled section (collapsible) ──────────────────────────── */}
+            {cancelledItems.length > 0 && (
+                <div className="border border-gray-500/20 rounded-2xl overflow-hidden">
+                    <button
+                        onClick={() => setShowCancelled(v => !v)}
+                        className="w-full flex items-center gap-2 px-4 py-3 bg-gray-500/5 hover:bg-gray-500/10 transition-colors text-left"
+                    >
+                        {showCancelled ? <ChevronDown className="w-3.5 h-3.5 text-gray-500" /> : <ChevronRight className="w-3.5 h-3.5 text-gray-500" />}
+                        <XCircle className="w-3.5 h-3.5 text-gray-500" />
+                        <span className="text-[11px] font-bold uppercase tracking-wide text-gray-500">Cancelados</span>
+                        <span className="ml-auto text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center bg-black/20 text-gray-500">{cancelledItems.length}</span>
+                    </button>
+                    {showCancelled && (
+                        <div className="p-3 grid grid-cols-4 gap-2">
+                            {cancelledItems.map(item => (
+                                <TreatmentCard
+                                    key={item.id}
+                                    item={item}
+                                    finalPrice={itemFinalPrice(item)}
+                                    onEdit={() => setEditingItem({ ...item })}
+                                    onDelete={() => deleteItem(item.id)}
+                                    onStatusChange={s => updateStatus(item.id, s)}
+                                />
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
             {/* ── Plan notes ───────────────────────────────────────────────── */}
             <div className="border-t border-white/10 pt-4">
                 <label className="text-[10px] text-clinical/40 uppercase tracking-widest mb-2 block">Notas del Plan</label>
@@ -180,6 +226,7 @@ export const TreatmentPipeline: React.FC<TreatmentPipelineProps> = ({ plan, onSa
             {editingItem && (
                 <ItemFormModal
                     item={editingItem}
+                    doctors={doctors}
                     onChange={setEditingItem}
                     onSave={saveItem}
                     onCancel={() => setEditingItem(null)}
@@ -196,54 +243,78 @@ const TreatmentCard: React.FC<{
     onEdit: () => void;
     onDelete: () => void;
     onStatusChange: (s: TreatmentStatus) => void;
-}> = ({ item, finalPrice, onEdit, onDelete, onStatusChange }) => (
-    <div className="bg-black/30 border border-white/10 rounded-xl p-3 group relative">
-        {/* Name + actions */}
-        <div className="flex items-start justify-between gap-1 mb-2">
-            <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                {item.toothNumber && (
-                    <span className="w-5 h-5 bg-electric/10 text-electric text-[8px] font-bold rounded-full flex items-center justify-center flex-shrink-0">
-                        {item.toothNumber}
+}> = ({ item, finalPrice, onEdit, onDelete, onStatusChange }) => {
+    const nexts = NEXT_STATUSES[item.status];
+    return (
+        <div className="bg-black/30 border border-white/10 rounded-xl p-3 group relative">
+            {/* Name + actions */}
+            <div className="flex items-start justify-between gap-1 mb-2">
+                <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                    {item.toothNumber && (
+                        <span className="w-5 h-5 bg-electric/10 text-electric text-[8px] font-bold rounded-full flex items-center justify-center flex-shrink-0">
+                            {item.toothNumber}
+                        </span>
+                    )}
+                    <p className="text-white text-xs font-bold leading-tight truncate">{item.name}</p>
+                </div>
+                <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                    <button onClick={onEdit}   className="text-clinical/40 hover:text-electric p-0.5 transition-colors"><Edit2  className="w-3 h-3" /></button>
+                    <button onClick={onDelete} className="text-clinical/40 hover:text-red-400 p-0.5 transition-colors"><Trash2 className="w-3 h-3" /></button>
+                </div>
+            </div>
+
+            {/* Meta */}
+            <div className="flex items-center gap-2 mb-1">
+                <span className="text-[9px] bg-black/40 text-clinical/40 px-1.5 py-0.5 rounded font-bold">Fase {item.phase}</span>
+                <span className="text-[10px] font-mono font-bold text-white/60 ml-auto">
+                    ${finalPrice.toLocaleString('es-MX')}
+                    {item.discount > 0 && <span className="text-emerald-400/60 ml-1">(-{item.discount}%)</span>}
+                </span>
+            </div>
+            {item.doctorName && <p className="text-[9px] text-clinical/30 mb-1 truncate">Dr. {item.doctorName}</p>}
+            {item.notes      && <p className="text-[9px] text-clinical/40 mb-2 truncate">{item.notes}</p>}
+
+            {/* Status transition buttons — only logical next steps */}
+            {nexts.length > 0 && (
+                <div className="flex gap-1 flex-wrap mt-2 pt-2 border-t border-white/5">
+                    {nexts.map(s => {
+                        const scfg = STATUS_CONFIG[s];
+                        // Style forward moves prominently, backward/cancel subtly
+                        const isForward = s !== 'cancelled' && s !== 'pending';
+                        return (
+                            <button key={s} onClick={() => onStatusChange(s)}
+                                className={`text-[8px] font-bold px-2 py-1 rounded-full border transition-all
+                                    ${isForward
+                                        ? `${scfg.bg} ${scfg.color} ${scfg.border} hover:opacity-100 opacity-80`
+                                        : 'bg-transparent border-white/10 text-clinical/30 hover:border-white/30 hover:text-clinical/60 opacity-70 hover:opacity-100'
+                                    }`}>
+                                {s === 'cancelled' ? '✕ Cancelar'
+                                    : s === 'pending' ? '↩ Reactivar'
+                                    : `→ ${scfg.label}`}
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
+            {nexts.length === 0 && (
+                <div className="mt-2 pt-2 border-t border-white/5">
+                    <span className="text-[8px] text-teal-400/50 font-bold flex items-center gap-1">
+                        <Check className="w-2.5 h-2.5" /> Proceso completado
                     </span>
-                )}
-                <p className="text-white text-xs font-bold leading-tight truncate">{item.name}</p>
-            </div>
-            <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                <button onClick={onEdit}   className="text-clinical/40 hover:text-electric  p-0.5 transition-colors"><Edit2   className="w-3 h-3" /></button>
-                <button onClick={onDelete} className="text-clinical/40 hover:text-red-400   p-0.5 transition-colors"><Trash2  className="w-3 h-3" /></button>
-            </div>
+                </div>
+            )}
         </div>
-
-        {/* Meta */}
-        <div className="flex items-center gap-2 mb-2">
-            <span className="text-[9px] bg-black/40 text-clinical/40 px-1.5 py-0.5 rounded font-bold">Fase {item.phase}</span>
-            <span className="text-[10px] font-mono font-bold text-white/60 ml-auto">
-                ${finalPrice.toLocaleString('es-MX')}
-                {item.discount > 0 && <span className="text-emerald-400/60 ml-1">(-{item.discount}%)</span>}
-            </span>
-        </div>
-        {item.doctorName && <p className="text-[9px] text-clinical/30 mb-1 truncate">Dr. {item.doctorName}</p>}
-        {item.notes      && <p className="text-[9px] text-clinical/40 mb-2 truncate">{item.notes}</p>}
-
-        {/* Status change buttons */}
-        <div className="flex gap-1 flex-wrap mt-2 pt-2 border-t border-white/5">
-            {ALL_STATUSES.filter(s => s !== item.status).map(s => (
-                <button key={s} onClick={() => onStatusChange(s)}
-                    className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full border transition-all opacity-50 hover:opacity-100 ${STATUS_CONFIG[s].bg} ${STATUS_CONFIG[s].color} ${STATUS_CONFIG[s].border}`}>
-                    → {STATUS_CONFIG[s].label}
-                </button>
-            ))}
-        </div>
-    </div>
-);
+    );
+};
 
 // ─── ItemFormModal ────────────────────────────────────────────────────────────
 const ItemFormModal: React.FC<{
     item: Partial<TreatmentPlanItem>;
+    doctors: StaffMember[];
     onChange: (item: Partial<TreatmentPlanItem>) => void;
     onSave: () => void;
     onCancel: () => void;
-}> = ({ item, onChange, onSave, onCancel }) => {
+}> = ({ item, doctors, onChange, onSave, onCancel }) => {
     const up = (patch: Partial<TreatmentPlanItem>) => onChange({ ...item, ...patch });
 
     return (
@@ -309,12 +380,28 @@ const ItemFormModal: React.FC<{
                     </div>
                     <div>
                         <label className="text-[10px] text-clinical/40 uppercase tracking-widest mb-1.5 block">Doctor</label>
-                        <input type="text"
-                            value={item.doctorName ?? ''}
-                            onChange={e => up({ doctorName: e.target.value })}
-                            placeholder="Nombre"
-                            className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-3 text-white focus:border-electric outline-none"
-                        />
+                        {doctors.length > 0 ? (
+                            <select
+                                value={item.doctorName ?? ''}
+                                onChange={e => up({ doctorName: e.target.value })}
+                                className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-3 text-white focus:border-electric outline-none"
+                            >
+                                <option value="">— Sin asignar —</option>
+                                {doctors.map(d => (
+                                    <option key={d.id} value={d.nombres}>
+                                        {d.nombres}
+                                        {d.staffType === 'external_doctor' ? ' (Ext.)' : ''}
+                                    </option>
+                                ))}
+                            </select>
+                        ) : (
+                            <input type="text"
+                                value={item.doctorName ?? ''}
+                                onChange={e => up({ doctorName: e.target.value })}
+                                placeholder="Nombre del doctor"
+                                className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-3 text-white focus:border-electric outline-none"
+                            />
+                        )}
                     </div>
                 </div>
 
