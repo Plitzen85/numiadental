@@ -71,7 +71,7 @@ export const Inventory = () => {
         }, 2000);
     };
 
-    const handleAddItem = (e: React.FormEvent) => {
+    const handleAddItem = (e: React.SyntheticEvent) => {
         e.preventDefault();
         const newItem: InventoryItem = {
             id: `INV-00${items.length + 1}`,
@@ -327,7 +327,7 @@ export const Inventory = () => {
                             <form onSubmit={handleAddItem} className="space-y-4">
                                 <div>
                                     <label className="text-xs text-clinical/60 mb-1 block">Nombre del Artículo</label>
-                                    <input required type="text" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-electric outline-none" placeholder="Ej. Resina P60 3M" />
+                                    <input title="Nombre del artículo" required type="text" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-electric outline-none" placeholder="Ej. Resina P60 3M" />
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-4">
@@ -343,7 +343,7 @@ export const Inventory = () => {
                                     </div>
                                     <div>
                                         <label className="text-xs text-clinical/60 mb-1 block">Unidad de Medida</label>
-                                        <input required type="text" value={formData.unit} onChange={e => setFormData({ ...formData, unit: e.target.value })} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-electric outline-none" placeholder="Ej. cajas, piezas..." />
+                                        <input title="Unidad de medida" required type="text" value={formData.unit} onChange={e => setFormData({ ...formData, unit: e.target.value })} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-white focus:border-electric outline-none" placeholder="Ej. cajas, piezas..." />
                                     </div>
                                 </div>
 

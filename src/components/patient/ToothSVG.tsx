@@ -73,7 +73,7 @@ export const ToothSVG: React.FC<ToothSVGProps> = ({ number, surfaces, onSurfaceC
                 className={`relative w-9 h-9 cursor-pointer transition-transform duration-150 group-hover:scale-110 ${isSelected ? 'scale-110' : ''}`}
                 title={`Diente ${number}`}
             >
-                <svg viewBox="0 0 40 40" className="w-full h-full drop-shadow-sm" style={{ filter: isSelected ? 'drop-shadow(0 0 4px #00d4ff)' : undefined }}>
+                <svg viewBox="0 0 40 40" className={`w-full h-full drop-shadow-sm ${isSelected ? 'tooth-svg-selected' : ''}`}>
                     {/* Vestibular (top) */}
                     <polygon
                         points="0,0 40,0 30,10 10,10"

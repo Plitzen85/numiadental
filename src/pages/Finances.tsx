@@ -13,7 +13,7 @@ const TransactionModal: React.FC<{ isOpen: boolean; onClose: () => void; onCompl
 
     if (!isOpen) return null;
 
-    const handleSubmit = async (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.SyntheticEvent) => {
         e.preventDefault();
         if (!concepto || !monto) return;
         setIsSaving(true);

@@ -66,7 +66,7 @@ export const Radar: React.FC = () => {
         }
     };
 
-    const handleCitySearch = async (e: React.FormEvent) => {
+    const handleCitySearch = async (e: React.SyntheticEvent) => {
         e.preventDefault();
         const city = searchCity;
         if (!city.trim() || !isLoaded) return;
@@ -255,7 +255,7 @@ export const Radar: React.FC = () => {
                                     options={{ types: ['(cities)'] }}
                                 >
                                     <input
-                                        title="Campo"
+                                        title="Buscar ciudad"
                                         type="text"
                                         placeholder="Ej. Cancún, Quintana Roo"
                                         className={`w-full bg-[#0A1628] border border-white/10 rounded-lg py-2 pl-10 pr-4 text-white focus:outline-none focus:border-electric transition-colors text-sm ${isGeocoding ? 'opacity-50' : ''}`}

@@ -6,9 +6,10 @@ interface LayoutProps {
     children: ReactNode;
     currentPath: string;
     onNavigate: (path: string) => void;
+    onLogout: () => void;
 }
 
-export const Layout: React.FC<LayoutProps> = ({ children, currentPath, onNavigate }) => {
+export const Layout: React.FC<LayoutProps> = ({ children, currentPath, onNavigate, onLogout }) => {
     return (
         <div className="flex bg-cobalt min-h-screen relative overflow-hidden print:bg-white print:overflow-visible">
             {/* Background glowing effects */}
@@ -16,7 +17,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPath, onNavigat
             <div className="fixed bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-premium/5 rounded-full blur-[150px] pointer-events-none print:hidden"></div>
 
             <div className="print:hidden">
-                <Sidebar currentPath={currentPath} onNavigate={onNavigate} />
+                <Sidebar currentPath={currentPath} onNavigate={onNavigate} onLogout={onLogout} />
             </div>
 
             <div className="flex-1 ml-64 flex flex-col min-h-screen print:ml-0">

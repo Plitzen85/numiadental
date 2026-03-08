@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { LayoutDashboard, Radar, Megaphone, Plane, Settings, LogOut, User as UserIcon, Landmark, FileBarChart, Calendar, Hospital, PackageSearch, Users } from 'lucide-react';
-import { useMarket } from '../../context/MarketContext';
-import { ModulePermissions } from '../../context/MarketContext';
+import { useMarket, ModulePermissions } from '../../context/MarketContext';
+import { useAuth } from '../../context/AuthContext';
 
 interface SidebarProps {
     currentPath: string;
     onNavigate: (path: string) => void;
+    onLogout: () => void;
 }
 
 const allNavItems: { id: string; label: string; icon: React.ElementType; path: string; module: keyof ModulePermissions }[] = [
@@ -20,12 +21,19 @@ const allNavItems: { id: string; label: string; icon: React.ElementType; path: s
     { id: 'reportes', label: 'Informes', icon: FileBarChart, path: '/reportes', module: 'reportes' },
 ];
 
-export const Sidebar: React.FC<SidebarProps> = ({ currentPath, onNavigate }) => {
+const STAFF_TYPE_LABELS: Record<string, string> = {
+    doctor: 'Doctor',
+    external_doctor: 'Doctor Externo',
+    admin: 'Administrativo',
+    master: 'Maestro',
+};
+
+export const Sidebar: React.FC<SidebarProps> = ({ currentPath, onNavigate, onLogout }) => {
     const [showSettings, setShowSettings] = useState(false);
-    const { hasPermission, clinicProfile, currentUserId, setCurrentUserId } = useMarket();
+    const { hasPermission } = useMarket();
+    const { currentUser } = useAuth();
 
     const visibleItems = allNavItems.filter(item => hasPermission(item.module));
-    const currentUser = clinicProfile?.staff?.find(s => s.id === currentUserId);
 
     return (
         <aside className="w-64 h-screen fixed left-0 top-0 glass-panel border-r border-white/5 flex flex-col z-50">
@@ -55,30 +63,25 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPath, onNavigate }) => 
                 })}
             </nav>
 
-            {/* Current user indicator */}
+            {/* Active user indicator */}
             {currentUser && (
-                <div className="px-4 py-2 mx-4 mb-2 rounded-xl bg-white/5 border border-white/10">
-                    <p className="text-[10px] text-clinical/40 uppercase tracking-widest mb-1">Usuario activo</p>
-                    <p className="text-xs text-clinical/80 font-medium truncate">{currentUser.nombres}</p>
-                    <p className="text-[10px] text-clinical/40 capitalize">{currentUser.role ?? 'admin'}</p>
-                </div>
-            )}
-
-            {/* Staff switcher (demo) */}
-            {clinicProfile?.staff && clinicProfile.staff.length > 1 && (
-                <div className="px-4 pb-2">
-                    <select
-                        title="Cambiar usuario activo"
-                        value={currentUserId}
-                        onChange={e => setCurrentUserId(e.target.value)}
-                        aria-label="Cambiar usuario activo"
-                        className="w-full text-xs bg-white/5 border border-white/10 text-clinical/70 rounded-lg px-2 py-1.5 focus:outline-none focus:border-electric/40"
-                    >
-
-                        {clinicProfile.staff.map(s => (
-                            <option key={s.id} value={s.id} className="bg-slate-900">{s.nombres}</option>
-                        ))}
-                    </select>
+                <div className="px-4 mb-2">
+                    <div className="px-3 py-2.5 rounded-xl bg-white/5 border border-white/10">
+                        <p className="text-[10px] text-clinical/40 uppercase tracking-widest mb-0.5">Sesión activa</p>
+                        <p className="text-xs text-clinical/90 font-semibold truncate">{currentUser.nombres}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide ${currentUser.isMasterAdmin
+                                ? 'bg-premium/20 text-premium border border-premium/30 shadow-lg shadow-premium/5'
+                                : currentUser.staffType === 'admin'
+                                    ? 'bg-rose-500/20 text-rose-300'
+                                    : currentUser.staffType === 'external_doctor'
+                                        ? 'bg-purple-500/20 text-purple-300'
+                                        : 'bg-electric/15 text-electric'
+                                }`}>
+                                {currentUser.isMasterAdmin ? 'Administrador Maestro' : (STAFF_TYPE_LABELS[currentUser.staffType] ?? currentUser.staffType)}
+                            </span>
+                        </div>
+                    </div>
                 </div>
             )}
 
@@ -86,12 +89,21 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPath, onNavigate }) => 
                 {showSettings && (
                     <div className="absolute bottom-full left-4 right-4 mb-2 p-3 bg-cobalt rounded-xl border border-white/10 shadow-2xl z-50">
                         <button onClick={() => { onNavigate('/settings'); setShowSettings(false); }} className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-clinical/70 hover:bg-white/5 hover:text-clinical rounded-lg transition-colors">
-                            <UserIcon className="w-4 h-4" /> <span>Mi Clínica</span>
+                            <UserIcon className="w-4 h-4 text-premium" /> <span>Mi Perfil</span>
                         </button>
-                        <button onClick={() => { onNavigate('/settings'); setShowSettings(false); }} className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-clinical/70 hover:bg-white/5 hover:text-clinical rounded-lg transition-colors mt-1">
-                            <Users className="w-4 h-4" /> <span>Equipo & Permisos</span>
-                        </button>
-                        <button onClick={() => alert("Cerrando sesión...")} className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 rounded-lg transition-colors mt-1">
+                        {(currentUser?.isMasterAdmin || currentUser?.role === 'admin' || currentUser?.modulePermissions?.settings) && (
+                            <>
+                                <button onClick={() => { onNavigate('/settings'); setShowSettings(false); }} className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-clinical/70 hover:bg-white/5 hover:text-clinical rounded-lg transition-colors mt-1">
+                                    <Hospital className="w-4 h-4" /> <span>Mi Clínica</span>
+                                </button>
+                                <button onClick={() => { onNavigate('/settings'); setShowSettings(false); }} className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-clinical/70 hover:bg-white/5 hover:text-clinical rounded-lg transition-colors mt-1">
+                                    <Users className="w-4 h-4" /> <span>Equipo &amp; Permisos</span>
+                                </button>
+                            </>
+                        )}
+                        <button
+                            onClick={() => { setShowSettings(false); onLogout(); }}
+                            className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 rounded-lg transition-colors mt-1">
                             <LogOut className="w-4 h-4" /> <span>Cerrar Sesión</span>
                         </button>
                     </div>

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Calendar as CalendarIcon, UserPlus, Sparkles, RefreshCcw, CheckCircle2, Bot } from 'lucide-react';
-import { useMarket } from '../context/MarketContext';
+import { useMarket, isDoctor } from '../context/MarketContext';
 import { AppointmentType, generateMockAppointments, getActiveUnitsAtTime, parseTimeToMinutes } from '../lib/agendaLogic';
 import { NewAppointmentModal } from '../components/NewAppointmentModal';
 import { PatientProfileForm } from '../components/PatientProfileForm';
@@ -10,7 +10,7 @@ import { PatientDirectory } from '../components/PatientDirectory';
 
 export const Agenda: React.FC = () => {
     const { clinicProfile, appointments, setAppointments, setFinanceStats, patients } = useMarket();
-    const doctors = clinicProfile?.staff || [];
+    const doctors = (clinicProfile?.staff || []).filter(isDoctor);
     const [isGoogleSynced, setIsGoogleSynced] = useState(false);
     const [isOptimizing, setIsOptimizing] = useState(false);
     const [isOptimized, setIsOptimized] = useState(false);
@@ -396,6 +396,7 @@ export const Agenda: React.FC = () => {
             {/* PATIENT PROFILE VIEW (AI Hub & Odontogram) */}
             {isPatientViewOpen && (
                 <PatientProfile
+                    patientId={selectedPatientId ?? ''}
                     patientName={patients.find(p => p.id === selectedPatientId) ? `${patients.find(p => p.id === selectedPatientId)?.nombres} ${patients.find(p => p.id === selectedPatientId)?.apellidos}` : 'Paciente Seleccionado'}
                     onClose={() => setIsPatientViewOpen(false)}
                 />

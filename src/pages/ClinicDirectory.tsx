@@ -83,22 +83,34 @@ export const ClinicDirectory: React.FC = () => {
         if (!clinicProfile) return;
 
         const updatedProfile = { ...clinicProfile };
-        const newRecord = { ...formData, id: editingId || Date.now().toString() };
 
         if (activeTab === 'staff') {
             const list = updatedProfile.staff || [];
             if (editingId) {
-                updatedProfile.staff = list.map(item => item.id === editingId ? newRecord as any : item);
+                updatedProfile.staff = list.map(item => item.id === editingId ? { ...item, ...formData } : item);
             } else {
-                updatedProfile.staff = [...list, newRecord as any];
+                // New staff member needs a default password and staffType
+                const newStaff = {
+                    ...formData,
+                    id: Date.now().toString(),
+                    password: '12345',
+                    staffType: 'doctor', // Default to doctor, can be changed in settings
+                    modulePermissions: {
+                        dashboard: true, radar: false, agenda: true, clinica: true,
+                        inventario: false, campanas: false, turismo: false, finanzas: false,
+                        reportes: false, settings: false
+                    }
+                };
+                updatedProfile.staff = [...list, newStaff as any];
             }
         } else {
             const key = activeTab as keyof ClinicProfile;
             const list = (updatedProfile[key] as DirectoryEntity[]) || [];
             if (editingId) {
-                (updatedProfile[key] as any) = list.map(item => item.id === editingId ? newRecord as any : item);
+                (updatedProfile[key] as any) = list.map(item => item.id === editingId ? { ...item, ...formData } : item);
             } else {
-                (updatedProfile[key] as any) = [...list, newRecord as any];
+                const newEntity = { ...formData, id: Date.now().toString() };
+                (updatedProfile[key] as any) = [...list, newEntity as any];
             }
         }
 

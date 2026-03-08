@@ -10,8 +10,38 @@
     border: 1px solid rgba(255, 255, 255, 0.08);
   }
 
+  .quote-panel-gradient {
+    background: linear-gradient(145deg, #1e3a8a, #1d4ed8);
+  }
+
+  .staff-avatar-gradient {
+    background: linear-gradient(135deg, #0ea5e9, #7c3aed);
+  }
+
+  .tooth-svg-selected {
+    filter: drop-shadow(0 0 4px #00d4ff);
+  }
+
   .glass-card {
     @apply bg-cobalt/40 backdrop-blur-md border border-white/5 shadow-lg rounded-2xl hover:bg-cobalt/50 transition-all duration-300;
+  }
+
+  .login-glow-tl {
+    background: radial-gradient(circle, rgba(0, 212, 255, 0.06) 0%, transparent 70%);
+  }
+
+  .login-glow-br {
+    background: radial-gradient(circle, rgba(139, 92, 246, 0.07) 0%, transparent 70%);
+  }
+
+  .login-grid {
+    background-image: linear-gradient(rgba(255, 255, 255, 0.5) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.5) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+
+  .login-btn-gradient {
+    background: linear-gradient(135deg, #0ea5e9, #7c3aed);
   }
 }
 

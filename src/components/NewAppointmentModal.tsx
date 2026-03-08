@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Search, ChevronDown, Check } from 'lucide-react';
-import { useMarket } from '../context/MarketContext';
+import { useMarket, isDoctor } from '../context/MarketContext';
 
 interface NewAppointmentModalProps {
     isOpen: boolean;
@@ -12,7 +12,7 @@ interface NewAppointmentModalProps {
 
 export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClose, initialTime, initialDoctorId }) => {
     const { clinicProfile, appointments, setAppointments, patients } = useMarket();
-    const doctors = clinicProfile?.staff || [];
+    const doctors = (clinicProfile?.staff || []).filter(isDoctor);
 
     // Form State (Mocked for UI purposes)
     const [modalFormState, setModalFormState] = useState<Record<string, string>>({

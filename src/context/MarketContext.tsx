@@ -1,6 +1,7 @@
-import React, { useContext, useState, ReactNode } from 'react';
+import React, { useContext, useState, ReactNode, useEffect } from 'react';
 
 import { generateMockAppointments, AppointmentType } from '../lib/agendaLogic';
+import { loadClinicProfile, saveClinicProfile, supabase, CLINIC_ID } from '../lib/supabase';
 
 // Define the shape of our data
 export interface Service {
@@ -67,6 +68,7 @@ export interface StaffMember {
     organizacion: string;
     fechaNacimiento: string;
     email: string;
+    password: string;
     domicilio: string;
     pais: string;
     telefono: string;
@@ -75,11 +77,17 @@ export interface StaffMember {
     ciudad: string;
     especialidad: string;
     comentario: string;
-    foto?: string; // Base64 string
+    foto?: string;
     colorTheme?: string;
     role?: 'admin' | 'doctor' | 'assistant';
+    staffType: 'admin' | 'doctor' | 'external_doctor';
     modulePermissions?: ModulePermissions;
+    isMasterAdmin?: boolean; // Unique role with total access
 }
+
+/** True if staff member can be assigned as treating doctor */
+export const isDoctor = (s: StaffMember) =>
+    s.staffType === 'doctor' || s.staffType === 'external_doctor';
 
 export interface DirectoryEntity {
     id: string;
@@ -164,6 +172,12 @@ export interface MarketContextType {
     setCurrentUserId: (id: string) => void;
     hasPermission: (module: keyof ModulePermissions) => boolean;
     updateStaffPermissions: (staffId: string, permissions: ModulePermissions) => void;
+    updateStaffPassword: (staffId: string, newPassword: string) => void;
+    updateStaffMember: (staffId: string, updates: Partial<StaffMember>) => void;
+    setMasterAdmin: (staffId: string) => void;
+    syncError: string | null;
+    hasSyncedFromCloud: boolean;
+    syncFromCloud: () => Promise<void>;
 }
 
 const defaultContext: MarketContextType = {
@@ -190,6 +204,12 @@ const defaultContext: MarketContextType = {
     setCurrentUserId: () => { },
     hasPermission: () => true,
     updateStaffPermissions: () => { },
+    updateStaffPassword: () => { },
+    updateStaffMember: () => { },
+    setMasterAdmin: () => { },
+    syncError: null,
+    hasSyncedFromCloud: false,
+    syncFromCloud: async () => { },
 };
 
 const MarketContext = React.createContext<MarketContextType>(defaultContext);
@@ -200,14 +220,16 @@ export const MarketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const [currentUserId, setCurrentUserId] = useState<string>('1');
     const [competitors, setCompetitors] = useState<Competitor[]>([]);
     const [intelligence, setIntelligence] = useState<MarketIntelligence>(defaultContext.intelligence);
-    const [isLoading, setIsLoading] = useState<boolean>(false);
+    const [isLoading, setIsLoading] = useState<boolean>(true);
     const [searchRadius, setSearchRadius] = useState<number>(10);
     const [baseLocation, setBaseLocation] = useState<{ lat: number, lng: number }>(defaultContext.baseLocation);
+    const [syncError, setSyncError] = useState<string | null>(null);
+    const [hasSyncedFromCloud, setHasSyncedFromCloud] = useState<boolean>(false);
 
-    // New Global States
+    // Global States
     const [appointments, setAppointments] = useState<AppointmentType[]>(generateMockAppointments());
     const [financeStats, setFinanceStats] = useState<FinanceStats>({
-        weeklyIncome: 65000, // Starts below the 80k goal to test traffic light
+        weeklyIncome: 65000,
         weeklyGoal: 80000,
         monthlyIncome: 120000,
         monthlyPatientsTreated: 80
@@ -215,107 +237,182 @@ export const MarketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const [patients, setPatients] = useState<Patient[]>([
         { id: '1', folio: '000001', nombres: 'Carlos', apellidos: 'Gómez', email: 'carlos@gmail.com', telefono: '555-123-4567', genero: 'Masculino', estadoCivil: 'Soltero', fechaNacimiento: '1990-05-14', tipoPaciente: 'Frecuente', alertaMedica: 'Alergia a Penicilina', alertaAdministrativa: 'Sin alerta', domicilio: 'Calle Principal 123', ciudad: 'Ciudad de México', pais: 'México', saldo: 1500, ultimaVisita: '2026-02-15' },
         { id: '2', folio: '000002', nombres: 'Lucía', apellidos: 'Fernández', email: 'lucia.f@hotmail.com', telefono: '555-987-6543', genero: 'Femenino', estadoCivil: 'Casada', fechaNacimiento: '1985-08-22', tipoPaciente: 'Nuevo', alertaMedica: 'Sin alerta', alertaAdministrativa: 'Deuda Pendiente', domicilio: 'Av. Secundaria 456', ciudad: 'Guadalajara', pais: 'México', saldo: -500, ultimaVisita: '2026-03-01' },
-        { id: '3', folio: '000003', nombres: 'Roberto', apellidos: 'Medina', email: 'roberto.m@yahoo.com', telefono: '555-456-7890', genero: 'Masculino', estadoCivil: 'Divorciado', fechaNacimiento: '1975-11-30', tipoPaciente: 'General', alertaMedica: 'Hipertensión', alertaAdministrativa: 'Paciente VIP', domicilio: 'Boulevard Tercero 789', ciudad: 'Monterrey', pais: 'México', saldo: 0, ultimaVisita: '2026-03-05' },
-        { id: '4', folio: '000004', nombres: 'Sofía', apellidos: 'Reyes', email: 'sofia.reyes@empresa.com', telefono: '555-789-0123', genero: 'Femenino', estadoCivil: 'Soltera', fechaNacimiento: '2000-02-14', tipoPaciente: 'Seguro Médico', alertaMedica: 'Sin alerta', alertaAdministrativa: 'Sin alerta', domicilio: 'Andador Cuarto 101', ciudad: 'Puebla', pais: 'México', saldo: 250, ultimaVisita: '2026-01-20' },
-        { id: '5', folio: '000005', nombres: 'Daniel', apellidos: 'Lewis', email: 'daniellewis@gmail.com', telefono: '555-321-0987', genero: 'Masculino', estadoCivil: 'Soltero', fechaNacimiento: '1995-07-07', tipoPaciente: 'Frecuente', alertaMedica: 'Diabético Tipo 2', alertaAdministrativa: 'Sin alerta', domicilio: 'Retorno Quinto 202', ciudad: 'Tijuana', pais: 'México', saldo: 0, ultimaVisita: '2026-03-06' }
     ]);
 
-    // Initialize profile with mock data but try to load from localStorage first
+    // Schema version — bump to force-clear stale localStorage on breaking changes
+    const SCHEMA_V = 'v2.7';
+
+    const SEED_PROFILE: ClinicProfile = {
+        nombre: 'Nümia Dental',
+        lat: 19.4326,
+        lng: -99.1332,
+        direccion: 'Playa del Carmen',
+        servicios: {},
+        logo: '',
+        staff: [
+            {
+                id: '1', nombres: 'Kike Vazquez', organizacion: 'Nümia Dental',
+                fechaNacimiento: '1985-02-03', email: 'admin@numiadental.com',
+                password: '12345',
+                domicilio: 'Los Olivos', pais: 'México', telefono: '984-120-1970',
+                genero: 'Masculino', estadoCivil: 'Casado(a)', ciudad: 'Playa del Carmen',
+                especialidad: 'Director Administrativo', comentario: 'Director Administrativo',
+                colorTheme: 'bg-blue-500/20 border-blue-500 text-blue-300',
+                role: 'admin', staffType: 'admin',
+                modulePermissions: { ...DEFAULT_ADMIN_PERMISSIONS },
+                isMasterAdmin: true
+            },
+            {
+                id: 'p-pamela', nombres: 'Pamela Salinas', organizacion: 'Nümia Dental',
+                fechaNacimiento: '1990-05-17', email: 'pam@numiadental.com',
+                password: '12345',
+                domicilio: 'Los Olivos', pais: 'México', telefono: '',
+                genero: 'Femenino', estadoCivil: 'Casado(a)', ciudad: 'Playa del Carmen',
+                especialidad: 'Periodoncista', comentario: 'Periodoncista',
+                staffType: 'doctor', role: 'doctor',
+                modulePermissions: { ...DEFAULT_DOCTOR_PERMISSIONS }
+            },
+            {
+                id: 'p-rocio', nombres: 'Rocio Vazquez', organizacion: 'Nümia Dental (Externo)',
+                fechaNacimiento: '1987-09-02', email: 'rocio@numiadental.com',
+                password: '12345',
+                domicilio: 'Monterrey', pais: 'México', telefono: '',
+                genero: 'Femenino', estadoCivil: 'Soltero(a)', ciudad: 'Monterrey',
+                especialidad: 'Psicologia', comentario: 'Psicologa',
+                staffType: 'admin', role: 'assistant',
+                modulePermissions: { ...DEFAULT_DOCTOR_PERMISSIONS, agenda: true, clinica: true }
+            },
+            {
+                id: 'p-santiago', nombres: 'Santiago Treviño', organizacion: 'Nümia Dental (Externo)',
+                fechaNacimiento: '1985-10-13', email: 'santi@numiadental.com',
+                password: '12345',
+                domicilio: 'Monterrey', pais: 'México', telefono: '',
+                genero: 'Masculino', estadoCivil: 'Soltero(a)', ciudad: 'Monterrey',
+                especialidad: 'Gerente de Identidad Corporativa y Marketing', comentario: 'Gerente de Identidad Corporativa y Marketing',
+                staffType: 'doctor', role: 'doctor',
+                modulePermissions: { ...DEFAULT_DOCTOR_PERMISSIONS }
+            },
+            {
+                id: 'p-eduardo', nombres: 'Eduardo Nepote', organizacion: 'Nümia Dental',
+                fechaNacimiento: '1984-12-17', email: 'nepo@numiadental.com',
+                password: '12345',
+                domicilio: 'Guadalajara', pais: 'México', telefono: '333-667-2505',
+                genero: 'Masculino', estadoCivil: 'Casado(a)', ciudad: 'Guadalajara',
+                especialidad: 'Asesor Tecnico', comentario: 'El mero mero',
+                staffType: 'doctor', role: 'doctor',
+                modulePermissions: { ...DEFAULT_DOCTOR_PERMISSIONS }
+            }
+        ],
+        depositos: [],
+        laboratorios: [],
+        proveedores: [],
+        aseguradoras: []
+    };
+
     const [clinicProfile, setClinicProfileState] = useState<ClinicProfile | null>(() => {
         const saved = localStorage.getItem('clinicProfile');
         if (saved) {
             try {
-                return JSON.parse(saved);
+                const parsed = JSON.parse(saved);
+                const stale = parsed.staff?.some((s: StaffMember) => !s.password || !s.staffType);
+                if (!stale) {
+                    localStorage.setItem('clinicProfile_schema', SCHEMA_V);
+                    return parsed;
+                }
             } catch (e) {
-                console.error("Failed to parse saved clinic profile", e);
+                console.error('Failed to parse saved clinic profile', e);
             }
         }
-        return {
-            nombre: 'Nümia Dental',
-            lat: 19.4326,
-            lng: -99.1332,
-            direccion: 'CDMX Centro',
-            servicios: {
-                'Preventivo': { 'Limpieza': 1200 },
-                'Restauradores': { 'Implantes': 18000 },
-                'Ortodónticos': { 'Ortodoncia': 30000 }
-            },
-            logo: '',
-            staff: [
-                {
-                    id: '1', nombres: 'Dr. Alejandro Vargas', organizacion: 'Nümia Dental',
-                    fechaNacimiento: '1985-04-12', email: 'dr.vargas@clinica.com', domicilio: 'Av. Principal 123',
-                    pais: 'México', telefono: '555-010-2020', genero: 'Masculino', estadoCivil: 'Casado',
-                    ciudad: 'Ciudad de México', especialidad: 'Cirujano Maxilofacial', comentario: 'Especialista principal',
-                    colorTheme: 'bg-blue-500/20 border-blue-500 text-blue-300',
-                    role: 'admin', modulePermissions: { ...DEFAULT_ADMIN_PERMISSIONS }
-                },
-                {
-                    id: '2', nombres: 'Dra. María Antonieta', organizacion: 'Nümia Dental',
-                    fechaNacimiento: '1990-08-22', email: 'dra.maria@clinica.com', domicilio: 'Av. Secundaria 456',
-                    pais: 'México', telefono: '555-010-3030', genero: 'Femenino', estadoCivil: 'Soltera',
-                    ciudad: 'Ciudad de México', especialidad: 'Ortodoncia', comentario: 'Ortodoncista',
-                    colorTheme: 'bg-emerald-500/20 border-emerald-500 text-emerald-300',
-                    role: 'doctor', modulePermissions: { ...DEFAULT_DOCTOR_PERMISSIONS }
-                },
-                {
-                    id: '3', nombres: 'Dr. Carlos Mendoza', organizacion: 'Nümia Dental',
-                    fechaNacimiento: '1988-11-05', email: 'dr.carlos@clinica.com', domicilio: 'Calle Tercera 789',
-                    pais: 'México', telefono: '555-010-4040', genero: 'Masculino', estadoCivil: 'Casado',
-                    ciudad: 'Ciudad de México', especialidad: 'Endodoncia', comentario: 'Endodoncista',
-                    colorTheme: 'bg-purple-500/20 border-purple-500 text-purple-300',
-                    role: 'doctor', modulePermissions: { ...DEFAULT_DOCTOR_PERMISSIONS }
-                },
-                {
-                    id: '4', nombres: 'Dra. Sofía Reyes', organizacion: 'Nümia Dental',
-                    fechaNacimiento: '1992-02-14', email: 'dra.sofia@clinica.com', domicilio: 'Calle Cuarta 101',
-                    pais: 'México', telefono: '555-010-5050', genero: 'Femenino', estadoCivil: 'Soltera',
-                    ciudad: 'Ciudad de México', especialidad: 'Odontopediatría', comentario: 'Odontopediatra',
-                    colorTheme: 'bg-rose-500/20 border-rose-500 text-rose-300',
-                    role: 'assistant', modulePermissions: { ...DEFAULT_DOCTOR_PERMISSIONS }
-                }
-            ],
-            depositos: [
-                {
-                    id: 'd1', clave: 'DEP-01', nombre: 'Dental Depod', razonSocial: 'Fernando Lerma',
-                    domicilio: 'Calle 35', codigoPostal: '', ciudad: 'Playa del Carmen', telefonos: 'Sin teléfonos',
-                    email: 'facturas@dentaldepod.com', nombreContacto: '', emailContacto: '', telefonoContacto: '', comentario: 'Sin comentario'
-                },
-                {
-                    id: 'd2', clave: 'DEP-02', nombre: 'Depósito Dental del Caribe', razonSocial: 'Raúl Gonzalez',
-                    domicilio: 'Cancún Centro', codigoPostal: '77500', ciudad: 'Cancún', telefonos: 'Sin teléfonos',
-                    email: '', nombreContacto: '', emailContacto: '', telefonoContacto: '', comentario: 'Proveedor rápido'
-                }
-            ],
-            laboratorios: [
-                {
-                    id: 'l1', clave: 'LAB-01', nombre: 'Laboratorio A1', razonSocial: 'Laboratorio A1',
-                    domicilio: 'Cancún', codigoPostal: '', ciudad: 'Cancún', telefonos: '(+52) 998 840 6062',
-                    email: '', nombreContacto: '', emailContacto: '', telefonoContacto: '', comentario: 'Coronas y puentes'
-                },
-                {
-                    id: 'l2', clave: 'LAB-02', nombre: 'Laboratorio Dental Escalante', razonSocial: '',
-                    domicilio: 'Quintana Roo', codigoPostal: '77710', ciudad: 'Playa del Carmen', telefonos: '998 147 6363',
-                    email: 'gustavolabor@gmail.com', nombreContacto: 'Gustavo', emailContacto: '', telefonoContacto: '', comentario: 'Ortodoncia'
-                }
-            ],
-            proveedores: [
-                {
-                    id: 'p1', clave: 'PRV-01', nombre: '3B Design Laboratorio', razonSocial: 'Ivan Gonzalez',
-                    domicilio: '', codigoPostal: '', ciudad: '', telefonos: '(+52) 984 278 7523',
-                    email: '', nombreContacto: 'Ivan', emailContacto: '', telefonoContacto: '', comentario: 'Insumos 3D'
-                }
-            ],
-            aseguradoras: []
-        };
+        return SEED_PROFILE;
     });
 
-    const setClinicProfile = (profile: ClinicProfile | null) => {
+    const syncFromCloud = async () => {
+        console.log('[MarketContext] Attempting to load profile from cloud...');
+        setIsLoading(true);
+        try {
+            const cloudProfile = await loadClinicProfile<ClinicProfile>();
+            if (cloudProfile) {
+                console.log('[MarketContext] Cloud profile loaded successfully:', cloudProfile.nombre);
+                setClinicProfileState(cloudProfile);
+                localStorage.setItem('clinicProfile', JSON.stringify(cloudProfile));
+                localStorage.setItem('clinicProfile_schema', SCHEMA_V);
+                setSyncError(null);
+                setHasSyncedFromCloud(true);
+            } else {
+                console.warn('[MarketContext] No cloud profile found.');
+                setHasSyncedFromCloud(true); // Allow saving initial profile
+                setSyncError(null);
+            }
+        } catch (e: any) {
+            console.error('[MarketContext] Cloud sync failed:', e);
+            const msg = e.message || '';
+            if (msg.includes('schema cache') || msg.includes('does not exist')) {
+                setSyncError('¡TABLA FALTANTE! Debes crear la tabla "clinic_profiles" en el SQL Editor de Supabase para activar la nube.');
+            } else {
+                setSyncError('Falla de conexión: No se pudo sincronizar con la nube.');
+            }
+            setHasSyncedFromCloud(false);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    // Cloud Sync: Load from Supabase on mount
+    useEffect(() => {
+        syncFromCloud();
+
+        // ─── Supabase Realtime Subscription ──────────────────────────────────
+        const channel = supabase
+            .channel('schema-db-changes')
+            .on(
+                'postgres_changes',
+                {
+                    event: 'UPDATE',
+                    schema: 'public',
+                    table: 'clinic_profiles',
+                    filter: `id=eq.${CLINIC_ID}`
+                },
+                (payload) => {
+                    console.log('[MarketContext] Realtime update received:', payload);
+                    const newProfile = payload.new.profile_json as ClinicProfile;
+                    if (newProfile) {
+                        setClinicProfileState(newProfile);
+                        localStorage.setItem('clinicProfile', JSON.stringify(newProfile));
+                        localStorage.setItem('clinicProfile_schema', SCHEMA_V);
+                        setSyncError(null);
+                    }
+                }
+            )
+            .subscribe((status) => {
+                console.log('[MarketContext] Realtime subscription status:', status);
+            });
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, []);
+
+    const setClinicProfile = async (profile: ClinicProfile | null) => {
         setClinicProfileState(profile);
         if (profile) {
             localStorage.setItem('clinicProfile', JSON.stringify(profile));
+            localStorage.setItem('clinicProfile_schema', SCHEMA_V);
+
+            if (!hasSyncedFromCloud) {
+                console.error('[MarketContext] Safety block: Attempted to save before successful sync.');
+                setSyncError('Bloqueo de seguridad: No se puede guardar sin sincronización previa exitosa.');
+                return;
+            }
+
+            const result = await saveClinicProfile(profile);
+            if (!result.success) {
+                setSyncError(result.error || 'Error al guardar en la nube');
+            } else {
+                setSyncError(null);
+            }
         } else {
             localStorage.removeItem('clinicProfile');
+            localStorage.removeItem('clinicProfile_schema');
         }
     };
 
@@ -324,7 +421,9 @@ export const MarketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         const staff = clinicProfile?.staff ?? [];
         const user = staff.find(s => s.id === currentUserId);
         if (!user) return true;
+        if (user.isMasterAdmin) return true;
         if (user.role === 'admin') return true;
+        if (module === 'settings') return true;
         return user.modulePermissions?.[module] ?? false;
     };
 
@@ -333,6 +432,31 @@ export const MarketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         const updatedStaff = (clinicProfile.staff ?? []).map(s =>
             s.id === staffId ? { ...s, modulePermissions: permissions } : s
         );
+        setClinicProfile({ ...clinicProfile, staff: updatedStaff });
+    };
+
+    const updateStaffPassword = (staffId: string, newPassword: string) => {
+        if (!clinicProfile) return;
+        const updatedStaff = (clinicProfile.staff ?? []).map(s =>
+            s.id === staffId ? { ...s, password: newPassword } : s
+        );
+        setClinicProfile({ ...clinicProfile, staff: updatedStaff });
+    };
+
+    const updateStaffMember = (staffId: string, updates: Partial<StaffMember>) => {
+        if (!clinicProfile) return;
+        const updatedStaff = (clinicProfile.staff ?? []).map(s =>
+            s.id === staffId ? { ...s, ...updates } : s
+        );
+        setClinicProfile({ ...clinicProfile, staff: updatedStaff });
+    };
+
+    const setMasterAdmin = (staffId: string) => {
+        if (!clinicProfile) return;
+        const updatedStaff = (clinicProfile.staff ?? []).map(s => ({
+            ...s,
+            isMasterAdmin: s.id === staffId
+        }));
         setClinicProfile({ ...clinicProfile, staff: updatedStaff });
     };
 
@@ -350,6 +474,12 @@ export const MarketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
             currentUserId, setCurrentUserId,
             hasPermission,
             updateStaffPermissions,
+            updateStaffPassword,
+            updateStaffMember,
+            setMasterAdmin,
+            syncError,
+            hasSyncedFromCloud,
+            syncFromCloud,
         }}>
             {children}
         </MarketContext.Provider>
