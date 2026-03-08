@@ -46,30 +46,45 @@ export const TreatmentPipeline: React.FC<TreatmentPipelineProps> = ({ plan, onSa
     const [isSaving, setIsSaving]             = useState(false);
     const [showCancelled, setShowCancelled]   = useState(false);
 
-    const savePlan = async (items: TreatmentPlanItem[], notes = planNotes) => {
+    // Optimistic local items — UI updates immediately, backend saves async
+    const [localItems, setLocalItems] = useState<TreatmentPlanItem[]>(plan.items);
+
+    // Sync when parent loads a new plan (different patient / initial load)
+    const prevPlanRef = React.useRef(plan.items);
+    React.useEffect(() => {
+        if (prevPlanRef.current !== plan.items) {
+            prevPlanRef.current = plan.items;
+            setLocalItems(plan.items);
+        }
+    }, [plan.items]);
+
+    const savePlan = (items: TreatmentPlanItem[], notes = planNotes) => {
+        // Update UI immediately
+        setLocalItems(items);
+        // Persist in background (no await — don't block UI)
         setIsSaving(true);
-        await onSave({ items, notes, updatedAt: new Date().toISOString() });
-        setIsSaving(false);
+        onSave({ items, notes, updatedAt: new Date().toISOString() })
+            .finally(() => setIsSaving(false));
     };
 
-    const updateStatus = async (id: string, status: TreatmentStatus) => {
-        const updated = plan.items.map(item =>
+    const updateStatus = (id: string, status: TreatmentStatus) => {
+        const updated = localItems.map(item =>
             item.id === id
                 ? { ...item, status, ...(status === 'completed' || status === 'paid' ? { completedDate: new Date().toISOString() } : {}) }
                 : item
         );
-        await savePlan(updated);
+        savePlan(updated);
     };
 
-    const deleteItem = async (id: string) => {
-        await savePlan(plan.items.filter(i => i.id !== id));
+    const deleteItem = (id: string) => {
+        savePlan(localItems.filter(i => i.id !== id));
     };
 
-    const saveItem = async () => {
+    const saveItem = () => {
         if (!editingItem?.name?.trim()) return;
         let updated: TreatmentPlanItem[];
         if (editingItem.id) {
-            updated = plan.items.map(i => i.id === editingItem.id ? { ...i, ...editingItem } as TreatmentPlanItem : i);
+            updated = localItems.map(i => i.id === editingItem.id ? { ...i, ...editingItem } as TreatmentPlanItem : i);
         } else {
             const newItem: TreatmentPlanItem = {
                 id: `tx-${Date.now()}`,
@@ -84,21 +99,21 @@ export const TreatmentPipeline: React.FC<TreatmentPipelineProps> = ({ plan, onSa
                 notes: editingItem.notes ?? '',
                 doctorName: editingItem.doctorName ?? '',
             };
-            updated = [...plan.items, newItem];
+            updated = [...localItems, newItem];
         }
-        await savePlan(updated);
+        savePlan(updated);
         setEditingItem(null);
     };
 
     // ── Calculations ──────────────────────────────────────────────────────────
     const itemFinalPrice = (i: TreatmentPlanItem) => i.price - (i.price * (i.discount / 100));
-    const activeItems    = plan.items.filter(i => i.status !== 'cancelled');
+    const activeItems    = localItems.filter(i => i.status !== 'cancelled');
     const totalPlan      = activeItems.reduce((s, i) => s + itemFinalPrice(i), 0);
-    const totalPaid      = plan.items.filter(i => i.status === 'paid').reduce((s, i) => s + itemFinalPrice(i), 0);
-    const totalCompleted = plan.items.filter(i => i.status === 'completed' || i.status === 'paid').reduce((s, i) => s + itemFinalPrice(i), 0);
+    const totalPaid      = localItems.filter(i => i.status === 'paid').reduce((s, i) => s + itemFinalPrice(i), 0);
+    const totalCompleted = localItems.filter(i => i.status === 'completed' || i.status === 'paid').reduce((s, i) => s + itemFinalPrice(i), 0);
     const totalAdeudo    = totalPlan - totalPaid;
     const progress       = totalPlan > 0 ? (totalCompleted / totalPlan) * 100 : 0;
-    const cancelledItems = plan.items.filter(i => i.status === 'cancelled');
+    const cancelledItems = localItems.filter(i => i.status === 'cancelled');
 
     return (
         <div className="space-y-5">
@@ -113,12 +128,12 @@ export const TreatmentPipeline: React.FC<TreatmentPipelineProps> = ({ plan, onSa
                 <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4">
                     <p className="text-[10px] text-emerald-400/70 uppercase tracking-widest mb-1">Realizados</p>
                     <p className="font-syne text-xl font-bold text-emerald-400">${totalCompleted.toLocaleString('es-MX')}</p>
-                    <p className="text-[10px] text-emerald-400/60 mt-1">{plan.items.filter(i => i.status === 'completed' || i.status === 'paid').length} completados</p>
+                    <p className="text-[10px] text-emerald-400/60 mt-1">{localItems.filter(i => i.status === 'completed' || i.status === 'paid').length} completados</p>
                 </div>
                 <div className="bg-teal-500/10 border border-teal-500/20 rounded-2xl p-4">
                     <p className="text-[10px] text-teal-400/70 uppercase tracking-widest mb-1">Cobrado</p>
                     <p className="font-syne text-xl font-bold text-teal-300">${totalPaid.toLocaleString('es-MX')}</p>
-                    <p className="text-[10px] text-teal-400/60 mt-1">{plan.items.filter(i => i.status === 'paid').length} pagados</p>
+                    <p className="text-[10px] text-teal-400/60 mt-1">{localItems.filter(i => i.status === 'paid').length} pagados</p>
                 </div>
                 <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
                     <p className="text-[10px] text-clinical/40 uppercase tracking-widest mb-1">Adeudo</p>
@@ -145,7 +160,7 @@ export const TreatmentPipeline: React.FC<TreatmentPipelineProps> = ({ plan, onSa
             <div className="grid grid-cols-4 gap-3 min-h-[260px]">
                 {PIPELINE_STATUSES.map(status => {
                     const cfg   = STATUS_CONFIG[status];
-                    const items = plan.items.filter(i => i.status === status);
+                    const items = localItems.filter(i => i.status === status);
                     const colTotal = items.reduce((s, i) => s + itemFinalPrice(i), 0);
                     return (
                         <div key={status} className={`border rounded-2xl p-3 ${cfg.bg} ${cfg.border}`}>
@@ -214,7 +229,7 @@ export const TreatmentPipeline: React.FC<TreatmentPipelineProps> = ({ plan, onSa
                 <textarea
                     value={planNotes}
                     onChange={e => setPlanNotes(e.target.value)}
-                    onBlur={() => savePlan(plan.items, planNotes)}
+                    onBlur={() => savePlan(localItems, planNotes)}
                     rows={2}
                     placeholder="Observaciones generales del plan de tratamiento..."
                     className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-clinical/90 text-sm focus:border-electric outline-none resize-none"
