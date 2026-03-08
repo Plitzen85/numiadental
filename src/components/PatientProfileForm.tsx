@@ -4,14 +4,37 @@ import { motion } from 'framer-motion';
 import { X, Printer, Link2 } from 'lucide-react';
 
 import { useMarket } from '../context/MarketContext';
+import { printPatientRecord, getOrCreateToken } from '../utils/patientPrint';
 
 export const PatientProfileForm: React.FC<{ isOpen: boolean; onClose: () => void; patientId?: string }> = ({ isOpen, onClose, patientId }) => {
-    const { patients, setPatients } = useMarket();
+    const { patients, setPatients, clinicProfile } = useMarket();
     const [activeTab, setActiveTab] = useState<'personales' | 'clinico'>('personales');
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [photo, setPhoto] = useState<string | null>(null);
     const [formState, setFormState] = useState<Record<string, string>>({});
+    const [linkCopied, setLinkCopied] = useState(false);
     const handleInput = (key: string, val: string) => setFormState(prev => ({ ...prev, [key]: val }));
+
+    const currentPatient = patientId ? patients.find(p => p.id === patientId) : undefined;
+
+    const handlePrint = () => {
+        if (!currentPatient) return;
+        printPatientRecord(currentPatient, clinicProfile?.nombre ?? 'Nümia Dental');
+    };
+
+    const handleGenerateLink = () => {
+        if (!currentPatient) return;
+        let token = currentPatient.registroToken;
+        if (!token) {
+            token = getOrCreateToken();
+            setPatients(prev => prev.map(p => p.id === currentPatient.id ? { ...p, registroToken: token! } : p));
+        }
+        const url = `${window.location.origin}/registro/${token}`;
+        navigator.clipboard.writeText(url).then(() => {
+            setLinkCopied(true);
+            setTimeout(() => setLinkCopied(false), 3000);
+        });
+    };
 
     React.useEffect(() => {
         if (isOpen && patientId) {
@@ -140,8 +163,24 @@ export const PatientProfileForm: React.FC<{ isOpen: boolean; onClose: () => void
                         <div className="flex justify-between items-center border-b border-gray-100 pb-4">
                             <h1 className="text-3xl font-black text-gray-800 uppercase tracking-tight">DATOS PERSONALES</h1>
                             <div className="flex items-center gap-4">
-                                <button title="Imprimir" aria-label="Imprimir" className="text-electric hover:text-cobalt transition-colors"><Printer className="w-5 h-5" /></button>
-                                <button className="bg-electric text-cobalt font-bold px-4 py-2 rounded-lg text-sm flex items-center gap-2 hover:opacity-90"><Link2 className="w-4 h-4" /> Generar link</button>
+                                <button
+                                    type="button"
+                                    title="Imprimir expediente"
+                                    onClick={handlePrint}
+                                    disabled={!currentPatient}
+                                    className="text-electric hover:text-cobalt transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                                >
+                                    <Printer className="w-5 h-5" />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleGenerateLink}
+                                    disabled={!currentPatient}
+                                    className="bg-electric text-cobalt font-bold px-4 py-2 rounded-lg text-sm flex items-center gap-2 hover:opacity-90 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                                >
+                                    <Link2 className="w-4 h-4" />
+                                    {linkCopied ? '¡Link copiado!' : 'Generar link'}
+                                </button>
                             </div>
                         </div>
 

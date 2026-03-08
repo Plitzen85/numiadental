@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
     User, Activity, FileText, BriefcaseMedical, Landmark, Camera,
     Sparkles, Trash2, Loader2, CheckCircle2, Plus, Layers,
-    AlertTriangle, ShieldAlert,
+    AlertTriangle, ShieldAlert, Printer, Link2,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { addTransaction, AccountType } from '../lib/financeApi';
@@ -11,6 +11,7 @@ import { HybridChart } from './patient/HybridChart';
 import { VisitRecord } from './patient/VisitRecord';
 import { TreatmentPipeline } from './patient/TreatmentPipeline';
 import { useMarket } from '../context/MarketContext';
+import { printPatientRecord, getOrCreateToken } from '../utils/patientPrint';
 import {
     loadPatientRecord, savePatientRecord, uploadPatientFile, deletePatientFile,
     PatientMedicalHistory, PatientFile,
@@ -34,7 +35,7 @@ const VISIT_STATUS_DOT: Record<VisitStatus, string> = {
 type TabId = 'historial' | 'odontograma' | 'consultas' | 'plan_tratamiento' | 'finanzas';
 
 export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patientName, onClose }) => {
-    const { currentUserId, clinicProfile, patients } = useMarket();
+    const { currentUserId, clinicProfile, patients, setPatients } = useMarket();
     const currentDoctor = clinicProfile?.staff?.find(s => s.id === currentUserId);
     const patient = patients.find(p => p.id === patientId);
     const hasMedAlert  = patient?.alertaMedica  && patient.alertaMedica  !== 'Sin alerta' && patient.alertaMedica !== '';
@@ -50,6 +51,26 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patie
 
     const [activeTab, setActiveTab] = useState<TabId>('historial');
     const [isAIViewerOpen, setIsAIViewerOpen] = useState(false);
+    const [linkCopied, setLinkCopied] = useState(false);
+
+    const handlePrint = () => {
+        if (!patient) return;
+        printPatientRecord(patient, clinicProfile?.nombre ?? 'Nümia Dental');
+    };
+
+    const handleGenerateLink = () => {
+        if (!patient) return;
+        let token = patient.registroToken;
+        if (!token) {
+            token = getOrCreateToken();
+            setPatients(prev => prev.map(p => p.id === patient.id ? { ...p, registroToken: token! } : p));
+        }
+        const url = `${window.location.origin}/registro/${token}`;
+        navigator.clipboard.writeText(url).then(() => {
+            setLinkCopied(true);
+            setTimeout(() => setLinkCopied(false), 3000);
+        });
+    };
 
     // ── Finance state ────────────────────────────────────────────────────────
     const [selectedTreatmentId, setSelectedTreatmentId] = useState<string>('__custom__');
@@ -242,6 +263,23 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patie
                                 <CheckCircle2 className="w-4 h-4" /> {savedMsg}
                             </span>
                         )}
+                        <button
+                            type="button"
+                            onClick={handlePrint}
+                            title="Imprimir expediente"
+                            className="text-clinical/50 hover:text-white bg-white/5 hover:bg-white/10 p-2 rounded-xl transition-colors"
+                        >
+                            <Printer className="w-4 h-4" />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleGenerateLink}
+                            title="Generar link de pre-registro"
+                            className="flex items-center gap-1.5 text-sm font-bold px-3 py-2 rounded-xl transition-all border border-white/10 bg-white/5 hover:bg-white/10 text-clinical/70 hover:text-white"
+                        >
+                            <Link2 className="w-4 h-4" />
+                            <span className="hidden sm:inline">{linkCopied ? '¡Copiado!' : 'Link'}</span>
+                        </button>
                         <button onClick={() => setIsAIViewerOpen(true)} className="bg-electric/20 text-electric hover:bg-electric/30 border border-electric/30 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors shadow-[0_0_15px_rgba(0,212,255,0.2)]">
                             <Sparkles className="w-4 h-4" /> NÜMIA AI
                         </button>

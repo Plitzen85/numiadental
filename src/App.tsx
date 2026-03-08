@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, useNavigate, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
+import { RegistroPaciente } from './pages/RegistroPaciente';
 import { MarketProvider, useMarket } from './context/MarketContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Layout } from './components/Layout/Layout';
@@ -20,13 +21,24 @@ import { PermissionGuard } from './components/shared/PermissionGuard';
 
 function AppContent() {
     const navigate = useNavigate();
+    const location = useLocation();
     const { isAuthenticated, logout, currentUser } = useAuth();
     const { setCurrentUserId, isLoading } = useMarket();
+    const isPublicRoute = location.pathname.startsWith('/registro/');
 
-    // Keep RBAC in sync with logged-in user
+    // Keep RBAC in sync with logged-in user (hooks must be called unconditionally)
     useEffect(() => {
         if (currentUser) setCurrentUserId(currentUser.id);
     }, [currentUser, setCurrentUserId]);
+
+    // Public routes — no auth required
+    if (isPublicRoute) {
+        return (
+            <Routes>
+                <Route path="/registro/:token" element={<RegistroPaciente />} />
+            </Routes>
+        );
+    }
 
     const handleLogin = () => navigate('/', { replace: true });
     const handleLogout = () => { logout(); navigate('/login', { replace: true }); };

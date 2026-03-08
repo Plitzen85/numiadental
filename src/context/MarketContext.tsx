@@ -36,6 +36,7 @@ export interface Patient {
     foto?: string;
     saldo: number;
     ultimaVisita: string;
+    registroToken?: string; // Unique token for patient self-service portal link
 }
 
 export interface ModulePermissions {
