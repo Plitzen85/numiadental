@@ -20,15 +20,21 @@ export const Agenda: React.FC = () => {
     const [isPatientFormOpen, setIsPatientFormOpen] = useState(false);
     const [isPatientViewOpen, setIsPatientViewOpen] = useState(false);
     const [selectedPatientId, setSelectedPatientId] = useState<string | undefined>(undefined);
+    const [editPatientId, setEditPatientId] = useState<string | undefined>(undefined);
 
     const handleOpenProfile = (id?: string) => {
         if (id) {
             setSelectedPatientId(id);
             setIsPatientViewOpen(true);
         } else {
-            setSelectedPatientId(undefined);
+            setEditPatientId(undefined);
             setIsPatientFormOpen(true);
         }
+    };
+
+    const handleEditPatient = (id: string) => {
+        setEditPatientId(id);
+        setIsPatientFormOpen(true);
     };
     const [activeTab, setActiveTab] = useState<'calendario' | 'pacientes'>('calendario');
 
@@ -369,7 +375,7 @@ export const Agenda: React.FC = () => {
                     </>
                 ) : (
                     <div className="col-span-1 md:col-span-4 min-h-[600px]">
-                        <PatientDirectory onOpenProfile={(id) => handleOpenProfile(id)} />
+                        <PatientDirectory onOpenProfile={(id) => handleOpenProfile(id)} onEditPatient={handleEditPatient} />
                     </div>
                 )}
             </div>
@@ -389,8 +395,8 @@ export const Agenda: React.FC = () => {
             {/* NEW PATIENT FORM */}
             <PatientProfileForm
                 isOpen={isPatientFormOpen}
-                onClose={() => setIsPatientFormOpen(false)}
-                patientId={undefined}
+                onClose={() => { setIsPatientFormOpen(false); setEditPatientId(undefined); }}
+                patientId={editPatientId}
             />
 
             {/* PATIENT PROFILE VIEW (AI Hub & Odontogram) */}

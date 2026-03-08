@@ -1,17 +1,19 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Search, Filter, Plus, UserCircle, Phone, Mail, AlertTriangle, LayoutGrid, List } from 'lucide-react';
+import { Search, Filter, Plus, UserCircle, Phone, Mail, AlertTriangle, LayoutGrid, List, Pencil, Trash2 } from 'lucide-react';
 import { useMarket } from '../context/MarketContext';
 
 interface PatientDirectoryProps {
     onOpenProfile: (patientId?: string) => void;
+    onEditPatient?: (patientId: string) => void;
 }
 
-export const PatientDirectory: React.FC<PatientDirectoryProps> = ({ onOpenProfile }) => {
-    const { patients } = useMarket();
+export const PatientDirectory: React.FC<PatientDirectoryProps> = ({ onOpenProfile, onEditPatient }) => {
+    const { patients, setPatients } = useMarket();
     const [searchTerm, setSearchTerm] = useState('');
     const [filterType, setFilterType] = useState('Todos');
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+    const [pendingDelete, setPendingDelete] = useState<string | null>(null);
 
     const filteredPatients = patients.filter(p => {
         const matchesSearch =
@@ -26,6 +28,28 @@ export const PatientDirectory: React.FC<PatientDirectoryProps> = ({ onOpenProfil
 
         return matchesSearch;
     });
+
+    const handleDeleteConfirm = (e: React.MouseEvent, patientId: string) => {
+        e.stopPropagation();
+        setPatients(prev => prev.filter(p => p.id !== patientId));
+        setPendingDelete(null);
+    };
+
+    const handleDeleteRequest = (e: React.MouseEvent, patientId: string) => {
+        e.stopPropagation();
+        setPendingDelete(patientId);
+        setTimeout(() => setPendingDelete(prev => prev === patientId ? null : prev), 4000);
+    };
+
+    const handleDeleteCancel = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setPendingDelete(null);
+    };
+
+    const handleEdit = (e: React.MouseEvent, patientId: string) => {
+        e.stopPropagation();
+        onEditPatient?.(patientId);
+    };
 
     return (
         <div className="flex flex-col h-full space-y-6">
@@ -104,12 +128,12 @@ export const PatientDirectory: React.FC<PatientDirectoryProps> = ({ onOpenProfil
                                     )}
                                 </div>
                                 <div className="flex flex-col items-end gap-1">
-                                    {patient.alertaMedica !== 'Sin alerta' && (
+                                    {patient.alertaMedica !== 'Sin alerta' && patient.alertaMedica && (
                                         <span className="bg-red-500/10 text-red-400 border border-red-500/20 text-[10px] px-2 py-1 rounded-full font-bold uppercase flex items-center gap-1" title={patient.alertaMedica}>
                                             <AlertTriangle className="w-3 h-3" /> Médica
                                         </span>
                                     )}
-                                    {patient.alertaAdministrativa !== 'Sin alerta' && (
+                                    {patient.alertaAdministrativa !== 'Sin alerta' && patient.alertaAdministrativa && (
                                         <span className="bg-orange-500/10 text-orange-400 border border-orange-500/20 text-[10px] px-2 py-1 rounded-full font-bold uppercase" title={patient.alertaAdministrativa}>
                                             Admin
                                         </span>
@@ -145,6 +169,36 @@ export const PatientDirectory: React.FC<PatientDirectoryProps> = ({ onOpenProfil
                                     </span>
                                 </div>
                             </div>
+
+                            {/* Action buttons */}
+                            <div className="flex items-center gap-2 mt-3 pt-3 border-t border-white/5" onClick={e => e.stopPropagation()}>
+                                {pendingDelete === patient.id ? (
+                                    <div className="flex items-center gap-2 w-full">
+                                        <span className="text-xs text-red-400 flex-1">¿Eliminar paciente?</span>
+                                        <button type="button" onClick={e => handleDeleteConfirm(e, patient.id)} className="text-[11px] bg-red-500/20 hover:bg-red-500/40 text-red-400 font-bold px-2 py-1 rounded-md transition-colors">Sí</button>
+                                        <button type="button" onClick={handleDeleteCancel} className="text-[11px] bg-white/10 hover:bg-white/20 text-clinical/70 font-bold px-2 py-1 rounded-md transition-colors">No</button>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={e => handleEdit(e, patient.id)}
+                                            title="Editar paciente"
+                                            className="flex-1 flex items-center justify-center gap-1 text-[11px] text-clinical/60 hover:text-electric hover:bg-electric/10 rounded-lg py-1.5 transition-colors"
+                                        >
+                                            <Pencil className="w-3 h-3" /> Editar
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={e => handleDeleteRequest(e, patient.id)}
+                                            title="Eliminar paciente"
+                                            className="flex-1 flex items-center justify-center gap-1 text-[11px] text-clinical/60 hover:text-red-400 hover:bg-red-500/10 rounded-lg py-1.5 transition-colors"
+                                        >
+                                            <Trash2 className="w-3 h-3" /> Eliminar
+                                        </button>
+                                    </>
+                                )}
+                            </div>
                         </motion.div>
                     ))}
                 </div>
@@ -158,7 +212,8 @@ export const PatientDirectory: React.FC<PatientDirectoryProps> = ({ onOpenProfil
                                     <th className="p-4 font-medium">Contacto</th>
                                     <th className="p-4 font-medium hidden lg:table-cell">Alertas</th>
                                     <th className="p-4 font-medium">Última Visita</th>
-                                    <th className="p-4 font-medium text-right pr-6">Saldo</th>
+                                    <th className="p-4 font-medium text-right">Saldo</th>
+                                    <th className="p-4 font-medium text-right pr-6">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -202,17 +257,17 @@ export const PatientDirectory: React.FC<PatientDirectoryProps> = ({ onOpenProfil
                                         </td>
                                         <td className="p-4 hidden lg:table-cell">
                                             <div className="flex flex-col gap-1 items-start">
-                                                {patient.alertaMedica !== 'Sin alerta' && (
+                                                {patient.alertaMedica !== 'Sin alerta' && patient.alertaMedica && (
                                                     <span className="bg-red-500/10 text-red-400 border border-red-500/20 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase flex items-center gap-1" title={patient.alertaMedica}>
                                                         <AlertTriangle className="w-3 h-3" /> Médica
                                                     </span>
                                                 )}
-                                                {patient.alertaAdministrativa !== 'Sin alerta' && (
+                                                {patient.alertaAdministrativa !== 'Sin alerta' && patient.alertaAdministrativa && (
                                                     <span className="bg-orange-500/10 text-orange-400 border border-orange-500/20 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase" title={patient.alertaAdministrativa}>
                                                         Admin
                                                     </span>
                                                 )}
-                                                {patient.alertaMedica === 'Sin alerta' && patient.alertaAdministrativa === 'Sin alerta' && (
+                                                {(!patient.alertaMedica || patient.alertaMedica === 'Sin alerta') && (!patient.alertaAdministrativa || patient.alertaAdministrativa === 'Sin alerta') && (
                                                     <span className="text-clinical/30 text-xs">-</span>
                                                 )}
                                             </div>
@@ -220,10 +275,38 @@ export const PatientDirectory: React.FC<PatientDirectoryProps> = ({ onOpenProfil
                                         <td className="p-4">
                                             <span className="text-white text-sm">{patient.ultimaVisita}</span>
                                         </td>
-                                        <td className="p-4 text-right pr-6">
+                                        <td className="p-4 text-right">
                                             <span className={`font-bold ${patient.saldo < 0 ? 'text-red-400' : 'text-emerald-400'}`}>
                                                 ${Math.abs(patient.saldo).toLocaleString('es-MX')} {patient.saldo < 0 ? 'Pendiente' : ''}
                                             </span>
+                                        </td>
+                                        <td className="p-4 pr-6 text-right" onClick={e => e.stopPropagation()}>
+                                            {pendingDelete === patient.id ? (
+                                                <div className="flex items-center justify-end gap-2">
+                                                    <span className="text-xs text-red-400">¿Eliminar?</span>
+                                                    <button type="button" onClick={e => handleDeleteConfirm(e, patient.id)} className="text-[11px] bg-red-500/20 hover:bg-red-500/40 text-red-400 font-bold px-2 py-1 rounded-md transition-colors">Sí</button>
+                                                    <button type="button" onClick={handleDeleteCancel} className="text-[11px] bg-white/10 hover:bg-white/20 text-clinical/70 font-bold px-2 py-1 rounded-md transition-colors">No</button>
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <button
+                                                        type="button"
+                                                        onClick={e => handleEdit(e, patient.id)}
+                                                        title="Editar paciente"
+                                                        className="p-1.5 rounded-lg text-clinical/60 hover:text-electric hover:bg-electric/10 transition-colors"
+                                                    >
+                                                        <Pencil className="w-4 h-4" />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={e => handleDeleteRequest(e, patient.id)}
+                                                        title="Eliminar paciente"
+                                                        className="p-1.5 rounded-lg text-clinical/60 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                            )}
                                         </td>
                                     </motion.tr>
                                 ))}
