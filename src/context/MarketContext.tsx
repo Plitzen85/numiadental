@@ -248,7 +248,6 @@ export const MarketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const clinicProfileRef = useRef<ClinicProfile | null>(null);
     const hasSyncedRef = useRef(false);
     const patientsRef = useRef<Patient[]>([]);
-    const skipPatientsPersist = useRef(true); // skip first effect run (mount hydration)
 
     // Schema version — bump to force-clear stale localStorage on breaking changes
     const SCHEMA_V = 'v2.7';
@@ -349,8 +348,6 @@ export const MarketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
                 const mergedPatients = cloudProfile.patients ?? localPatients;
                 const merged = { ...cloudProfile, patients: mergedPatients };
                 setClinicProfileState(merged);
-                // Skip the patients useEffect persist triggered by this state update
-                skipPatientsPersist.current = true;
                 setPatientsState(mergedPatients);
                 localStorage.setItem('clinicProfile', JSON.stringify(merged));
                 localStorage.setItem('clinicProfile_schema', SCHEMA_V);
@@ -403,7 +400,6 @@ export const MarketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
                     if (newProfile) {
                         const merged = { ...newProfile, patients: newProfile.patients ?? patientsRef.current };
                         setClinicProfileState(merged);
-                        skipPatientsPersist.current = true;
                         setPatientsState(merged.patients ?? []);
                         localStorage.setItem('clinicProfile', JSON.stringify(merged));
                         localStorage.setItem('clinicProfile_schema', SCHEMA_V);
@@ -449,28 +445,31 @@ export const MarketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     useEffect(() => { hasSyncedRef.current = hasSyncedFromCloud; }, [hasSyncedFromCloud]);
     useEffect(() => { patientsRef.current = patients; }, [patients]);
 
-    // Persist patients to localStorage + Supabase whenever they change
-    // skipPatientsPersist guards against saving during cloud hydration (not a user change)
-    useEffect(() => {
-        if (skipPatientsPersist.current) {
-            skipPatientsPersist.current = false;
-            return;
-        }
-        const profile = clinicProfileRef.current;
-        if (!profile) return;
-        const updated = { ...profile, patients };
-        setClinicProfileState(updated);
-        localStorage.setItem('clinicProfile', JSON.stringify(updated));
-        if (hasSyncedRef.current) {
-            saveClinicProfile(updated).catch(e =>
-                console.error('[MarketContext] Failed to persist patients:', e)
-            );
-        }
-    }, [patients]); // eslint-disable-line react-hooks/exhaustive-deps
-
-    // setPatients: just updates state; the useEffect above handles persistence
+    // setPatients: updates state AND immediately persists to localStorage + Supabase.
+    // Uses setTimeout(0) to run after the render commit, safely outside the updater.
     const setPatients: React.Dispatch<React.SetStateAction<Patient[]>> = useCallback(
-        (updater) => setPatientsState(updater),
+        (updater) => {
+            let captured: Patient[] | undefined;
+            setPatientsState(prev => {
+                const next = typeof updater === 'function' ? updater(prev) : updater;
+                captured = next;
+                return next;
+            });
+            setTimeout(() => {
+                const next = captured;
+                if (next === undefined) return;
+                const profile = clinicProfileRef.current;
+                if (!profile) return;
+                const updated = { ...profile, patients: next };
+                setClinicProfileState(updated);
+                localStorage.setItem('clinicProfile', JSON.stringify(updated));
+                if (hasSyncedRef.current) {
+                    saveClinicProfile(updated).catch(e =>
+                        console.error('[MarketContext] Failed to persist patients:', e)
+                    );
+                }
+            }, 0);
+        },
         []
     );
 
