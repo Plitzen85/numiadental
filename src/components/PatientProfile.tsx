@@ -55,7 +55,7 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patie
 
     const handlePrint = () => {
         if (!patient) return;
-        printPatientRecord(patient, clinicProfile?.nombre ?? 'Nümia Dental');
+        printPatientRecord(patient, clinicProfile?.nombre ?? 'Nümia Dental', medicalHistory);
     };
 
     const handleGenerateLink = () => {

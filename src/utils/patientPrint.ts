@@ -1,6 +1,11 @@
 import { Patient } from '../context/MarketContext';
+import { PatientMedicalHistory } from '../lib/supabase';
 
-export function printPatientRecord(patient: Patient, clinicName = 'Nümia Dental') {
+export function printPatientRecord(
+    patient: Patient,
+    clinicName = 'Nümia Dental',
+    medicalHistory?: PatientMedicalHistory
+) {
     const alertMed = patient.alertaMedica && patient.alertaMedica !== 'Sin alerta' && patient.alertaMedica !== ''
         ? `<div class="alert alert-med">⚠ Alerta Médica: ${patient.alertaMedica}</div>` : '';
     const alertAdm = patient.alertaAdministrativa && patient.alertaAdministrativa !== 'Sin alerta' && patient.alertaAdministrativa !== ''
@@ -8,6 +13,41 @@ export function printPatientRecord(patient: Patient, clinicName = 'Nümia Dental
 
     const field = (label: string, value: string) =>
         `<div class="field"><label>${label}</label><span>${value || '—'}</span></div>`;
+
+    // Build antecedentes checkboxes section
+    const antecedentesHtml = medicalHistory ? (() => {
+        const items: { label: string; active: boolean }[] = [
+            { label: 'Alergias a Medicamentos', active: !!medicalHistory.alergias },
+            { label: 'Diabetes',                active: !!medicalHistory.diabetes },
+            { label: 'Hipertensión',            active: !!medicalHistory.hipertension },
+            { label: 'Cardiopatía',             active: !!medicalHistory.cardiopatia },
+            { label: 'Embarazo',                active: !!medicalHistory.embarazo },
+        ];
+        const boxes = items.map(it =>
+            `<div class="antecedente ${it.active ? 'active' : ''}">
+                <span class="check">${it.active ? '✓' : '○'}</span> ${it.label}
+            </div>`
+        ).join('');
+
+        const medicamentos = medicalHistory.medicamentos?.trim();
+        const notas = (medicalHistory.notas ?? medicalHistory.notes ?? '').trim();
+
+        return `
+  <div class="section">
+    <div class="section-title">Antecedentes Médicos</div>
+    <div class="antecedentes-grid">${boxes}</div>
+    ${medicamentos ? `
+    <div class="text-field">
+      <label>Medicamentos Actuales</label>
+      <p>${medicamentos}</p>
+    </div>` : ''}
+    ${notas ? `
+    <div class="text-field">
+      <label>Notas Adicionales</label>
+      <p>${notas}</p>
+    </div>` : ''}
+  </div>`;
+    })() : '';
 
     const html = `<!DOCTYPE html>
 <html lang="es">
@@ -31,6 +71,13 @@ export function printPatientRecord(patient: Patient, clinicName = 'Nümia Dental
     .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
     .field label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#9ca3af;display:block;margin-bottom:3px}
     .field span{font-size:12px;color:#111827;font-weight:500;display:block;border-bottom:1px solid #f3f4f6;padding-bottom:3px}
+    .antecedentes-grid{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+    .antecedente{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:5px 12px;border-radius:6px;border:1.5px solid #e5e7eb;color:#6b7280;background:#f9fafb}
+    .antecedente.active{border-color:#ef4444;background:#fef2f2;color:#dc2626}
+    .antecedente .check{font-weight:900;font-size:13px}
+    .text-field{margin-top:10px}
+    .text-field label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#9ca3af;display:block;margin-bottom:4px}
+    .text-field p{font-size:12px;color:#111827;border:1px solid #e5e7eb;border-radius:6px;padding:8px 10px;background:#f9fafb;white-space:pre-wrap}
     .signatures{display:flex;justify-content:space-between;margin-top:60px;padding-top:0}
     .sig{width:220px;text-align:center}
     .sig-line{border-top:1px solid #374151;padding-top:8px;font-size:10px;color:#6b7280;font-weight:600}
@@ -84,6 +131,8 @@ export function printPatientRecord(patient: Patient, clinicName = 'Nümia Dental
       ${field('Saldo', patient.saldo === 0 ? 'Al corriente' : `$${Math.abs(patient.saldo).toLocaleString('es-MX')} ${patient.saldo < 0 ? 'pendiente' : 'a favor'}`)}
     </div>
   </div>
+
+  ${antecedentesHtml}
 
   <div class="signatures">
     <div class="sig"><div class="sig-line">Firma Física Paciente o Tutor</div></div>
