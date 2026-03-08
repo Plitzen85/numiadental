@@ -62,7 +62,6 @@ export const TreatmentPipeline: React.FC<TreatmentPipelineProps> = ({ plan, onSa
     };
 
     const deleteItem = async (id: string) => {
-        if (!confirm('¿Eliminar este tratamiento del plan?')) return;
         await savePlan(plan.items.filter(i => i.id !== id));
     };
 
