@@ -18,9 +18,17 @@ export const PatientProfileForm: React.FC<{ isOpen: boolean; onClose: () => void
 
     const currentPatient = patientId ? patients.find(p => p.id === patientId) : undefined;
 
-    const handlePrint = () => {
+    const handlePrint = async () => {
         if (!currentPatient) return;
-        printPatientRecord(currentPatient, clinicProfile?.nombre ?? 'Nümia Dental', undefined, formState);
+        // Always load the latest saved clinical data from Supabase before printing
+        let state = formState;
+        if (patientId) {
+            const record = await loadPatientRecord(patientId);
+            if (record.clinicalFormState) {
+                state = { ...formState, ...record.clinicalFormState };
+            }
+        }
+        printPatientRecord(currentPatient, clinicProfile?.nombre ?? 'Nümia Dental', undefined, state);
     };
 
     const handleGenerateLink = () => {
@@ -537,8 +545,15 @@ export const PatientProfileForm: React.FC<{ isOpen: boolean; onClose: () => void
                                 <input title="Campo" value={formState["text_33"] || ""} onChange={e => handleInput("text_33", e.target.value)} type="text" placeholder="Escribe aquí" className="w-full bg-gray-50 border border-gray-200 rounded-md p-2 text-sm focus:border-electric outline-none transition-colors" />
                             </div>
 
+                            {/* Save button for clinical tab */}
+                            <div className="flex justify-center pt-8 pb-4">
+                                <button type="button" onClick={handleSave} className="bg-emerald-300/80 hover:bg-emerald-400 text-white font-bold py-2 px-10 rounded-md transition-colors shadow-sm">
+                                    Guardar Historial
+                                </button>
+                            </div>
+
                             {/* Signatures */}
-                            <div className="flex justify-between items-end pt-24">
+                            <div className="flex justify-between items-end pt-8">
                                 <div className="w-1/3 border-t border-gray-800 text-center pt-2 font-bold text-sm text-gray-800">
                                     Firma Física Paciente o Tutor
                                 </div>
