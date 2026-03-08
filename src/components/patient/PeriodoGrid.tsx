@@ -20,7 +20,7 @@ export const defaultPeriodoData = (): PeriodoData => ({
 });
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
-const TW = 36;       // px per tooth column
+const TW = 54;       // px per tooth column
 
 const CH = 110;      // px chart height
 const CEJ = 32;      // Y of cemento-enamel junction
@@ -220,13 +220,19 @@ const ChartSection: React.FC<ChartProps> = ({ teeth, data, side, label }) => {
 // ─── Compact inputs ───────────────────────────────────────────────────────────
 
 const DepthInput: React.FC<{ v: number; onChange: (n: number) => void; hi?: boolean }> = ({ v, onChange, hi }) => {
-    const cl = hi
-        ? v >= 6 ? 'bg-red-600 text-white border-red-400/60' : v >= 4 ? 'bg-orange-500 text-white border-orange-400/60' : v >= 3 ? 'bg-yellow-400 text-black border-yellow-300/60' : 'bg-white/10 text-white border-white/30'
-        : 'bg-white/10 text-white border-white/30';
+    const bg = hi
+        ? v >= 6 ? 'bg-red-600 border-red-400/70'
+            : v >= 4 ? 'bg-orange-500 border-orange-400/70'
+                : v >= 3 ? 'bg-yellow-400 border-yellow-300/70'
+                    : 'bg-white/15 border-white/40'
+        : 'bg-white/15 border-white/40';
+    const textColor = (hi && v >= 3 && v < 4) ? '#000000' : '#ffffff';
     return (
-        <input type="number" min={0} max={12} value={v} aria-label="Medición"
+        <input
+            type="number" min={0} max={12} value={v} aria-label="Medición"
             onChange={e => onChange(Math.max(0, Math.min(12, parseInt(e.target.value) || 0)))}
-            className={`w-[10px] h-[18px] text-center text-[9px] font-bold border outline-none rounded-sm focus:ring-1 focus:ring-electric/50 focus:border-electric/60 p-0 ${cl}`}
+            style={{ color: textColor, MozAppearance: 'textfield' } as React.CSSProperties}
+            className={`w-[16px] h-[26px] text-center text-[12px] font-bold border outline-none rounded focus:ring-1 focus:ring-electric/60 focus:border-electric/70 px-0 ${bg}`}
         />
     );
 };
@@ -269,7 +275,7 @@ export const PeriodoGrid: React.FC<PeriodoGridProps> = ({ teethNumbers, data, on
     );
 
     const cell3 = (n: number, side: 'buccal' | 'lingual', field: 'probingDepth' | 'gingivalMargin', hi?: boolean) => (
-        <div key={n} className="w-[36px] flex-shrink-0 flex justify-center items-center gap-px">
+        <div key={n} className="w-[54px] flex-shrink-0 flex justify-center items-center gap-0.5">
             {([0, 1, 2] as const).map(i => (
                 <DepthInput key={i}
                     v={data[n]?.[field][side][i] ?? 0}
@@ -285,7 +291,7 @@ export const PeriodoGrid: React.FC<PeriodoGridProps> = ({ teethNumbers, data, on
                 : field === 'buccal-bleed' ? data[n]?.bleeding.buccal
                     : data[n]?.bleeding.lingual;
         return (
-            <div key={n} className="w-[36px] flex-shrink-0 flex justify-center items-center">
+            <div key={n} className="w-[54px] flex-shrink-0 flex justify-center items-center">
                 <CheckDot
                     v={val ?? false}
                     color={field.includes('bleed') ? 'bg-red-500' : 'bg-cyan-500'}
@@ -311,7 +317,7 @@ export const PeriodoGrid: React.FC<PeriodoGridProps> = ({ teethNumbers, data, on
                     <div className="flex items-center py-1 bg-white/5 border-b border-white/10">
                         <div className="w-[80px] flex-shrink-0" />
                         {teethNumbers.map(n => (
-                            <div key={n} className="w-[36px] flex-shrink-0 text-center text-[9px] font-bold text-electric/70">{n}</div>
+                            <div key={n} className="w-[54px] flex-shrink-0 text-center text-[10px] font-bold text-electric/70">{n}</div>
                         ))}
                     </div>
 
