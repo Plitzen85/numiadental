@@ -19,7 +19,7 @@ export const PatientProfileForm: React.FC<{ isOpen: boolean; onClose: () => void
 
     const handlePrint = () => {
         if (!currentPatient) return;
-        printPatientRecord(currentPatient, clinicProfile?.nombre ?? 'Nümia Dental');
+        printPatientRecord(currentPatient, clinicProfile?.nombre ?? 'Nümia Dental', undefined, formState);
     };
 
     const handleGenerateLink = () => {
@@ -348,10 +348,11 @@ export const PatientProfileForm: React.FC<{ isOpen: boolean; onClose: () => void
                             <div>
                                 <label className="text-sm font-bold text-gray-700 block mb-2">Medio por el cual nos conoce</label>
                                 <div className="flex gap-6 text-sm text-gray-600">
-                                    <label className="flex items-center gap-2 cursor-pointer"><input title="Campo" type="radio" name="source" className="text-blue-500" /> Búsqueda en internet</label>
-                                    <label className="flex items-center gap-2 cursor-pointer"><input title="Campo" type="radio" name="source" className="text-blue-500" /> Redes sociales</label>
-                                    <label className="flex items-center gap-2 cursor-pointer"><input title="Campo" type="radio" name="source" className="text-blue-500" /> Recomendación</label>
-                                    <label className="flex items-center gap-2 cursor-pointer"><input title="Campo" type="radio" name="source" className="text-blue-500" /> Otro</label>
+                                    {['Búsqueda en internet','Redes sociales','Recomendación','Otro'].map(opt => (
+                                        <label key={opt} className="flex items-center gap-2 cursor-pointer">
+                                            <input title="Campo" type="radio" name="radio_source" value={opt} checked={formState['radio_source'] === opt} onChange={() => handleInput('radio_source', opt)} className="text-blue-500" /> {opt}
+                                        </label>
+                                    ))}
                                 </div>
                             </div>
                             <div>
@@ -365,14 +366,14 @@ export const PatientProfileForm: React.FC<{ isOpen: boolean; onClose: () => void
 
                             {/* Medical Boolean Questions */}
                             <div className="space-y-5">
-                                <BoolQuestion label="¿Considera bueno su estado de salud?" />
-                                <BoolQuestion label="¿Ha observado cambios en su salud en el último año?" />
+                                <BoolQuestion label="¿Considera bueno su estado de salud?" stateKey="bool_salud" value={formState["bool_salud"]} onChange={handleInput} />
+                                <BoolQuestion label="¿Ha observado cambios en su salud en el último año?" stateKey="bool_cambios" value={formState["bool_cambios"]} onChange={handleInput} />
                                 <div className="space-y-2">
-                                    <BoolQuestion label="¿Se encuentra bajo tratamiento médico?" />
+                                    <BoolQuestion label="¿Se encuentra bajo tratamiento médico?" stateKey="bool_tratamiento" value={formState["bool_tratamiento"]} onChange={handleInput} />
                                     <input title="Campo" value={formState["text_16"] || ""} onChange={e => handleInput("text_16", e.target.value)} type="text" placeholder="Especifique" className="w-full bg-gray-50 border border-gray-200 rounded-md p-2 text-sm focus:border-electric outline-none transition-colors" />
                                 </div>
                                 <div className="space-y-2">
-                                    <BoolQuestion label="¿Ha tenido una cirugía o enfermedad grave en los últimos 5 años?" />
+                                    <BoolQuestion label="¿Ha tenido una cirugía o enfermedad grave en los últimos 5 años?" stateKey="bool_cirugia" value={formState["bool_cirugia"]} onChange={handleInput} />
                                     <input title="Campo" value={formState["text_17"] || ""} onChange={e => handleInput("text_17", e.target.value)} type="text" placeholder="Especifique" className="w-full bg-gray-50 border border-gray-200 rounded-md p-2 text-sm focus:border-electric outline-none transition-colors" />
                                 </div>
 
@@ -400,30 +401,30 @@ export const PatientProfileForm: React.FC<{ isOpen: boolean; onClose: () => void
                                     <input title="Campo" value={formState["text_22"] || ""} onChange={e => handleInput("text_22", e.target.value)} type="text" placeholder="Escribe aquí" className="w-full bg-gray-50 border border-gray-200 rounded-md p-2 text-sm focus:border-electric outline-none transition-colors" />
                                 </div>
 
-                                <BoolQuestion label="¿Se encuentra en embarazo o lactancia?" />
+                                <BoolQuestion label="¿Se encuentra en embarazo o lactancia?" stateKey="bool_embarazo" value={formState["bool_embarazo"]} onChange={handleInput} />
                             </div>
 
                             {/* Pathologies Checklist */}
                             <div className="pt-6">
                                 <h3 className="text-lg font-bold text-gray-800 mb-4">¿Padece usted alguna de las siguientes enfermedades?</h3>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-y-4 gap-x-8">
-                                    <BoolQuestion label="Diabetes" />
-                                    <BoolQuestion label="Hipertensión arterial" />
-                                    <BoolQuestion label="Hipotensión arterial" />
-                                    <BoolQuestion label="Enfermedades cardiovasculares" />
-                                    <BoolQuestion label="Asma" />
-                                    <BoolQuestion label="Tuberculosis" />
-                                    <BoolQuestion label="Hepatitis" />
-                                    <BoolQuestion label="Enfermedades renales" />
-                                    <BoolQuestion label="Gastritis" />
-                                    <BoolQuestion label="Úlcera gástrica" />
-                                    <BoolQuestion label="Piel hipersensible" />
-                                    <BoolQuestion label="Defectos de coagulación" />
-                                    <BoolQuestion label="Anemia" />
-                                    <BoolQuestion label="Artritis reumatoide" />
-                                    <BoolQuestion label="Epilepsia" />
-                                    <BoolQuestion label="Recibido transfusiones sanguíneas" />
-                                    <BoolQuestion label="Recibido terapias de radiación" />
+                                    <BoolQuestion label="Diabetes" stateKey="bool_diabetes" value={formState["bool_diabetes"]} onChange={handleInput} />
+                                    <BoolQuestion label="Hipertensión arterial" stateKey="bool_hipertension" value={formState["bool_hipertension"]} onChange={handleInput} />
+                                    <BoolQuestion label="Hipotensión arterial" stateKey="bool_hipotension" value={formState["bool_hipotension"]} onChange={handleInput} />
+                                    <BoolQuestion label="Enfermedades cardiovasculares" stateKey="bool_cardio" value={formState["bool_cardio"]} onChange={handleInput} />
+                                    <BoolQuestion label="Asma" stateKey="bool_asma" value={formState["bool_asma"]} onChange={handleInput} />
+                                    <BoolQuestion label="Tuberculosis" stateKey="bool_tuberculosis" value={formState["bool_tuberculosis"]} onChange={handleInput} />
+                                    <BoolQuestion label="Hepatitis" stateKey="bool_hepatitis" value={formState["bool_hepatitis"]} onChange={handleInput} />
+                                    <BoolQuestion label="Enfermedades renales" stateKey="bool_renal" value={formState["bool_renal"]} onChange={handleInput} />
+                                    <BoolQuestion label="Gastritis" stateKey="bool_gastritis" value={formState["bool_gastritis"]} onChange={handleInput} />
+                                    <BoolQuestion label="Úlcera gástrica" stateKey="bool_ulcera" value={formState["bool_ulcera"]} onChange={handleInput} />
+                                    <BoolQuestion label="Piel hipersensible" stateKey="bool_piel" value={formState["bool_piel"]} onChange={handleInput} />
+                                    <BoolQuestion label="Defectos de coagulación" stateKey="bool_coagulacion" value={formState["bool_coagulacion"]} onChange={handleInput} />
+                                    <BoolQuestion label="Anemia" stateKey="bool_anemia" value={formState["bool_anemia"]} onChange={handleInput} />
+                                    <BoolQuestion label="Artritis reumatoide" stateKey="bool_artritis" value={formState["bool_artritis"]} onChange={handleInput} />
+                                    <BoolQuestion label="Epilepsia" stateKey="bool_epilepsia" value={formState["bool_epilepsia"]} onChange={handleInput} />
+                                    <BoolQuestion label="Recibido transfusiones sanguíneas" stateKey="bool_transfusion" value={formState["bool_transfusion"]} onChange={handleInput} />
+                                    <BoolQuestion label="Recibido terapias de radiación" stateKey="bool_radiacion" value={formState["bool_radiacion"]} onChange={handleInput} />
                                 </div>
                             </div>
 
@@ -447,15 +448,15 @@ export const PatientProfileForm: React.FC<{ isOpen: boolean; onClose: () => void
                             <div className="pt-6">
                                 <h3 className="text-lg font-bold text-gray-800 mb-4">Es alérgico o ha tenido alguna complicación con los siguientes fármacos o materiales:</h3>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-8">
-                                    <BoolQuestion label="Anestésicos locales" />
-                                    <BoolQuestion label="Penicilina" />
-                                    <BoolQuestion label="Sulfas" />
-                                    <BoolQuestion label="Barbitúricos, sedantes, o pastillas para dormir" />
-                                    <BoolQuestion label="Aspirina" />
-                                    <BoolQuestion label="Peróxido de hidrógeno (Agua oxigenada)" />
-                                    <BoolQuestion label="Hipoclorito de sodio (Cloro)" />
-                                    <BoolQuestion label="Polvo" />
-                                    <BoolQuestion label="Hule o látex" />
+                                    <BoolQuestion label="Anestésicos locales" stateKey="bool_anestesia" value={formState["bool_anestesia"]} onChange={handleInput} />
+                                    <BoolQuestion label="Penicilina" stateKey="bool_penicilina" value={formState["bool_penicilina"]} onChange={handleInput} />
+                                    <BoolQuestion label="Sulfas" stateKey="bool_sulfas" value={formState["bool_sulfas"]} onChange={handleInput} />
+                                    <BoolQuestion label="Barbitúricos, sedantes, o pastillas para dormir" stateKey="bool_barbitur" value={formState["bool_barbitur"]} onChange={handleInput} />
+                                    <BoolQuestion label="Aspirina" stateKey="bool_aspirina" value={formState["bool_aspirina"]} onChange={handleInput} />
+                                    <BoolQuestion label="Peróxido de hidrógeno (Agua oxigenada)" stateKey="bool_peroxido" value={formState["bool_peroxido"]} onChange={handleInput} />
+                                    <BoolQuestion label="Hipoclorito de sodio (Cloro)" stateKey="bool_hipoclorito" value={formState["bool_hipoclorito"]} onChange={handleInput} />
+                                    <BoolQuestion label="Polvo" stateKey="bool_polvo" value={formState["bool_polvo"]} onChange={handleInput} />
+                                    <BoolQuestion label="Hule o látex" stateKey="bool_latex" value={formState["bool_latex"]} onChange={handleInput} />
                                 </div>
                             </div>
                         </div>
@@ -534,18 +535,22 @@ export const PatientProfileForm: React.FC<{ isOpen: boolean; onClose: () => void
     );
 };
 
-const BoolQuestion: React.FC<{ label: string }> = ({ label }) => {
-    // Local unique name for radio groups
+const BoolQuestion: React.FC<{
+    label: string;
+    stateKey: string;
+    value?: string;
+    onChange?: (k: string, v: string) => void;
+}> = ({ label, stateKey, value = 'no', onChange }) => {
     const id = React.useId();
     return (
         <div className="flex flex-col gap-1">
             <span className="text-sm font-bold text-gray-700">{label}</span>
             <div className="flex gap-4">
                 <label className="text-xs font-bold text-gray-600 flex items-center gap-1 cursor-pointer">
-                    <input title="Campo" type="radio" name={id} value="si" className="text-blue-500" /> SI
+                    <input title="Campo" type="radio" name={id} value="si" checked={value === 'si'} onChange={() => onChange?.(stateKey, 'si')} className="text-blue-500" /> SI
                 </label>
                 <label className="text-xs font-bold text-gray-600 flex items-center gap-1 cursor-pointer">
-                    <input title="Campo" type="radio" name={id} value="no" defaultChecked className="text-blue-500" /> NO
+                    <input title="Campo" type="radio" name={id} value="no" checked={value !== 'si'} onChange={() => onChange?.(stateKey, 'no')} className="text-blue-500" /> NO
                 </label>
             </div>
         </div>
