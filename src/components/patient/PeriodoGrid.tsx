@@ -231,8 +231,17 @@ const DepthInput: React.FC<{ v: number; onChange: (n: number) => void; hi?: bool
         <input
             type="number" min={0} max={12} value={v} aria-label="Medición"
             onChange={e => onChange(Math.max(0, Math.min(12, parseInt(e.target.value) || 0)))}
-            style={{ color: textColor, MozAppearance: 'textfield' } as React.CSSProperties}
-            className={`w-[16px] h-[26px] text-center text-[12px] font-bold border outline-none rounded focus:ring-1 focus:ring-electric/60 focus:border-electric/70 px-0 ${bg}`}
+            style={{
+                color: textColor,
+                MozAppearance: 'textfield',
+                WebkitAppearance: 'none',
+            } as React.CSSProperties}
+            className={`w-[18px] h-[26px] text-center text-[12px] font-bold border outline-none rounded focus:ring-1 focus:ring-electric/60 focus:border-electric/70 px-0
+                [&::-webkit-inner-spin-button]:appearance-none
+                [&::-webkit-outer-spin-button]:appearance-none
+                [&::-webkit-inner-spin-button]:m-0
+                [&::-webkit-outer-spin-button]:m-0
+                ${bg}`}
         />
     );
 };
