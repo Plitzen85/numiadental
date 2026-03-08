@@ -46,9 +46,14 @@ export const PatientProfileForm: React.FC<{ isOpen: boolean; onClose: () => void
     const handleSave = () => {
         const dateNow = new Date().toISOString().split('T')[0];
         const names = formState.text_3?.split(' ') || [];
+        const existingPatient = patientId ? patients.find(p => p.id === patientId) : undefined;
+        // Consecutive ID: keep existing one on edit, assign next available on creation
+        const nextNumero = existingPatient?.numeroPaciente ??
+            (patients.length > 0 ? Math.max(...patients.map(p => p.numeroPaciente ?? 0)) + 1 : 1);
         const newPatient = {
             id: patientId || Date.now().toString(),
-            folio: formState.text_1 || `0000${Math.floor(Math.random() * 100)}`,
+            numeroPaciente: nextNumero,
+            folio: formState.text_1 || String(nextNumero).padStart(6, '0'),
             nombres: names[0] || 'Nuevo',
             apellidos: names.slice(1).join(' ') || 'Paciente',
             email: formState.email_1 || '',
@@ -148,8 +153,18 @@ export const PatientProfileForm: React.FC<{ isOpen: boolean; onClose: () => void
                                     <input title="Campo" value={formState["text_1"] || ""} onChange={e => handleInput("text_1", e.target.value)} type="text" className="w-full bg-gray-50 border border-gray-200 rounded-md p-2 text-sm focus:border-electric outline-none transition-colors" />
                                 </div>
                                 <div>
-                                    <label className="text-xs font-bold text-gray-500 mb-1 block">Num. de paciente</label>
-                                    <input title="Campo" value={formState["text_2"] || ""} onChange={e => handleInput("text_2", e.target.value)} type="text" defaultValue="7175" className="w-full bg-gray-100 border border-gray-200 rounded-md p-2 text-sm text-gray-600 outline-none" readOnly />
+                                    <label className="text-xs font-bold text-gray-500 mb-1 block">Núm. de Paciente</label>
+                                    <input
+                                        title="Número de paciente asignado automáticamente"
+                                        type="text"
+                                        readOnly
+                                        value={
+                                            patientId
+                                                ? String(patients.find(p => p.id === patientId)?.numeroPaciente ?? '—')
+                                                : `#${patients.length > 0 ? Math.max(...patients.map(p => p.numeroPaciente ?? 0)) + 1 : 1}`
+                                        }
+                                        className="w-full bg-gray-100 border border-gray-200 rounded-md p-2 text-sm font-bold text-gray-700 outline-none cursor-not-allowed"
+                                    />
                                 </div>
                                 <div>
                                     <label className="text-xs font-bold text-gray-500 mb-1 block">Tipo de paciente*</label>

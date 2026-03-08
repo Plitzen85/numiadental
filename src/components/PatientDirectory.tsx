@@ -84,6 +84,7 @@ export const PatientDirectory: React.FC<PatientDirectoryProps> = ({ onOpenProfil
 
                 <div className="flex bg-black/40 border border-white/10 rounded-lg p-1 hidden md:flex">
                     <button
+                        type="button"
                         title="Vista Cuadrícula"
                         onClick={() => setViewMode('grid')}
                         className={`p-2 rounded-md transition-colors ${viewMode === 'grid' ? 'bg-electric text-cobalt' : 'text-clinical/60 hover:text-white'}`}
@@ -91,6 +92,7 @@ export const PatientDirectory: React.FC<PatientDirectoryProps> = ({ onOpenProfil
                         <LayoutGrid className="w-5 h-5" />
                     </button>
                     <button
+                        type="button"
                         title="Vista Lista"
                         onClick={() => setViewMode('list')}
                         className={`p-2 rounded-md transition-colors ${viewMode === 'list' ? 'bg-electric text-cobalt' : 'text-clinical/60 hover:text-white'}`}
@@ -100,6 +102,7 @@ export const PatientDirectory: React.FC<PatientDirectoryProps> = ({ onOpenProfil
                 </div>
 
                 <button
+                    type="button"
                     onClick={() => onOpenProfile()}
                     className="w-full md:w-auto bg-electric text-cobalt font-bold px-6 py-2 rounded-lg flex items-center justify-center gap-2 hover:bg-electric/90 transition-colors shadow-[0_0_15px_rgba(0,212,255,0.3)]"
                 >
@@ -145,7 +148,7 @@ export const PatientDirectory: React.FC<PatientDirectoryProps> = ({ onOpenProfil
                                 <h3 className="font-syne font-bold text-lg text-white mb-1 group-hover:text-electric transition-colors">
                                     {patient.nombres} {patient.apellidos}
                                 </h3>
-                                <div className="text-xs text-clinical/60 font-mono">Folio: {patient.folio} • {patient.tipoPaciente}</div>
+                                <div className="text-xs text-clinical/60 font-mono">Pac. #{patient.numeroPaciente} • {patient.tipoPaciente}</div>
                             </div>
 
                             <div className="space-y-2 mb-6 flex-1">
@@ -240,7 +243,7 @@ export const PatientDirectory: React.FC<PatientDirectoryProps> = ({ onOpenProfil
                                                         {patient.nombres} {patient.apellidos}
                                                     </div>
                                                     <div className="text-xs text-clinical/50 font-mono">
-                                                        Folio: {patient.folio} • {patient.tipoPaciente}
+                                                        Pac. #{patient.numeroPaciente} • {patient.tipoPaciente}
                                                     </div>
                                                 </div>
                                             </div>

@@ -18,6 +18,7 @@ export interface FinanceStats {
 
 export interface Patient {
     id: string;
+    numeroPaciente: number;  // Auto-assigned consecutive ID, immutable after creation
     folio: string;
     nombres: string;
     apellidos: string;
