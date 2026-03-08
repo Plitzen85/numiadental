@@ -1,4 +1,4 @@
-import React, { useContext, useState, ReactNode, useEffect } from 'react';
+import React, { useContext, useState, ReactNode, useEffect, useRef, useCallback } from 'react';
 
 import { generateMockAppointments, AppointmentType } from '../lib/agendaLogic';
 import { loadClinicProfile, saveClinicProfile, supabase, CLINIC_ID } from '../lib/supabase';
@@ -125,6 +125,7 @@ export interface ClinicProfile {
     laboratorios?: DirectoryEntity[];
     proveedores?: DirectoryEntity[];
     aseguradoras?: DirectoryEntity[];
+    patients?: Patient[]; // Persisted patient list
 }
 
 export interface Competitor {
@@ -234,7 +235,16 @@ export const MarketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         monthlyIncome: 120000,
         monthlyPatientsTreated: 80
     });
-    const [patients, setPatients] = useState<Patient[]>([]);
+    // ── Patients — initialized from localStorage for instant hydration on refresh ──
+    const [patients, setPatientsState] = useState<Patient[]>(() => {
+        try {
+            const saved = localStorage.getItem('clinicProfile');
+            if (saved) return (JSON.parse(saved) as ClinicProfile).patients ?? [];
+        } catch { /* ignore */ }
+        return [];
+    });
+    const clinicProfileRef = useRef<ClinicProfile | null>(null);
+    const hasSyncedRef = useRef(false);
 
     // Schema version — bump to force-clear stale localStorage on breaking changes
     const SCHEMA_V = 'v2.7';
@@ -331,10 +341,12 @@ export const MarketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
             if (cloudProfile) {
                 console.log('[MarketContext] Cloud profile loaded successfully:', cloudProfile.nombre);
                 setClinicProfileState(cloudProfile);
+                if (cloudProfile.patients !== undefined) setPatientsState(cloudProfile.patients);
                 localStorage.setItem('clinicProfile', JSON.stringify(cloudProfile));
                 localStorage.setItem('clinicProfile_schema', SCHEMA_V);
                 setSyncError(null);
                 setHasSyncedFromCloud(true);
+                hasSyncedRef.current = true;
             } else {
                 console.warn('[MarketContext] No cloud profile found.');
                 setHasSyncedFromCloud(true); // Allow saving initial profile
@@ -374,6 +386,7 @@ export const MarketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
                     const newProfile = payload.new.profile_json as ClinicProfile;
                     if (newProfile) {
                         setClinicProfileState(newProfile);
+                        if (newProfile.patients !== undefined) setPatientsState(newProfile.patients);
                         localStorage.setItem('clinicProfile', JSON.stringify(newProfile));
                         localStorage.setItem('clinicProfile_schema', SCHEMA_V);
                         setSyncError(null);
@@ -412,6 +425,30 @@ export const MarketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
             localStorage.removeItem('clinicProfile_schema');
         }
     };
+
+    // Keep refs current for use inside callbacks
+    useEffect(() => { clinicProfileRef.current = clinicProfile; }, [clinicProfile]);
+    useEffect(() => { hasSyncedRef.current = hasSyncedFromCloud; }, [hasSyncedFromCloud]);
+
+    // setPatients: updates state AND persists patients inside clinicProfile to Supabase
+    const setPatients: React.Dispatch<React.SetStateAction<Patient[]>> = useCallback((updater) => {
+        setPatientsState(prev => {
+            const next = typeof updater === 'function' ? updater(prev) : updater;
+            const profile = clinicProfileRef.current;
+            if (profile) {
+                const updated = { ...profile, patients: next };
+                clinicProfileRef.current = updated;
+                setClinicProfileState(updated);
+                localStorage.setItem('clinicProfile', JSON.stringify(updated));
+                if (hasSyncedRef.current) {
+                    saveClinicProfile(updated).catch(e =>
+                        console.error('[MarketContext] Failed to persist patients:', e)
+                    );
+                }
+            }
+            return next;
+        });
+    }, []);
 
     // RBAC helpers
     const hasPermission = (module: keyof ModulePermissions): boolean => {
