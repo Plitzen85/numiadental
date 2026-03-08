@@ -1,10 +1,11 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
 import { X, Printer, Link2 } from 'lucide-react';
 
 import { useMarket } from '../context/MarketContext';
 import { printPatientRecord, getOrCreateToken } from '../utils/patientPrint';
+import { loadPatientRecord, savePatientRecord } from '../lib/supabase';
 
 export const PatientProfileForm: React.FC<{ isOpen: boolean; onClose: () => void; patientId?: string }> = ({ isOpen, onClose, patientId }) => {
     const { patients, setPatients, clinicProfile } = useMarket();
@@ -36,11 +37,11 @@ export const PatientProfileForm: React.FC<{ isOpen: boolean; onClose: () => void
         });
     };
 
-    React.useEffect(() => {
+    useEffect(() => {
         if (isOpen && patientId) {
             const p = patients.find(x => x.id === patientId);
             if (p) {
-                setFormState({
+                const baseState: Record<string, string> = {
                     text_1: p.folio,
                     text_3: p.nombres + ' ' + p.apellidos,
                     text_7: p.domicilio,
@@ -53,8 +54,15 @@ export const PatientProfileForm: React.FC<{ isOpen: boolean; onClose: () => void
                     select_1: p.tipoPaciente.toUpperCase(),
                     text_10: p.alertaMedica !== 'Sin alerta' ? p.alertaMedica : '',
                     text_11: p.alertaAdministrativa !== 'Sin alerta' ? p.alertaAdministrativa : ''
-                });
+                };
+                setFormState(baseState);
                 setPhoto(p.foto || null);
+                // Load saved clinical history from patient_records
+                loadPatientRecord(patientId).then(record => {
+                    if (record.clinicalFormState) {
+                        setFormState(prev => ({ ...prev, ...record.clinicalFormState }));
+                    }
+                });
             }
         } else if (!isOpen) {
             setFormState({});
@@ -102,6 +110,18 @@ export const PatientProfileForm: React.FC<{ isOpen: boolean; onClose: () => void
             }
             return [...prev, newPatient as any];
         });
+
+        // Persist clinical questionnaire answers to patient_records
+        const clinicalKeys = Object.keys(formState).filter(k =>
+            k.startsWith('bool_') || k.startsWith('radio_') ||
+            ['text_15','text_16','text_17','text_18','text_19','text_20','text_21','text_22',
+             'text_23','text_24','text_25','text_26','text_27','text_28','text_29','text_30',
+             'text_31','text_32','text_33','select_4','select_5'].includes(k)
+        );
+        if (clinicalKeys.length > 0) {
+            const clinicalFormState = Object.fromEntries(clinicalKeys.map(k => [k, formState[k]]));
+            savePatientRecord(newPatient.id, { clinicalFormState });
+        }
 
         handleClose();
     };

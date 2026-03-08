@@ -167,6 +167,7 @@ export interface PatientRecordData {
     files: PatientFile[];
     visits: PatientVisit[];
     treatmentPlan: TreatmentPlan;
+    clinicalFormState?: Record<string, string>; // Full clinical questionnaire from PatientProfileForm
 }
 
 const DEFAULT_PATIENT_RECORD: PatientRecordData = {
