@@ -221,12 +221,12 @@ const ChartSection: React.FC<ChartProps> = ({ teeth, data, side, label }) => {
 
 const DepthInput: React.FC<{ v: number; onChange: (n: number) => void; hi?: boolean }> = ({ v, onChange, hi }) => {
     const cl = hi
-        ? v >= 6 ? 'bg-red-600 text-white' : v >= 4 ? 'bg-orange-500 text-white' : v >= 3 ? 'bg-yellow-400 text-black' : 'bg-transparent text-clinical/70'
-        : 'bg-transparent text-clinical/70';
+        ? v >= 6 ? 'bg-red-600 text-white border-red-400/60' : v >= 4 ? 'bg-orange-500 text-white border-orange-400/60' : v >= 3 ? 'bg-yellow-400 text-black border-yellow-300/60' : 'bg-white/10 text-white border-white/30'
+        : 'bg-white/10 text-white border-white/30';
     return (
         <input type="number" min={0} max={12} value={v} aria-label="Medición"
             onChange={e => onChange(Math.max(0, Math.min(12, parseInt(e.target.value) || 0)))}
-            className={`w-[10px] h-[18px] text-center text-[9px] font-bold border-0 outline-none rounded-sm focus:ring-1 focus:ring-electric/50 p-0 ${cl}`}
+            className={`w-[10px] h-[18px] text-center text-[9px] font-bold border outline-none rounded-sm focus:ring-1 focus:ring-electric/50 focus:border-electric/60 p-0 ${cl}`}
         />
     );
 };
