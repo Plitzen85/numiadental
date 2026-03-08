@@ -234,10 +234,7 @@ export const MarketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         monthlyIncome: 120000,
         monthlyPatientsTreated: 80
     });
-    const [patients, setPatients] = useState<Patient[]>([
-        { id: '1', folio: '000001', nombres: 'Carlos', apellidos: 'Gómez', email: 'carlos@gmail.com', telefono: '555-123-4567', genero: 'Masculino', estadoCivil: 'Soltero', fechaNacimiento: '1990-05-14', tipoPaciente: 'Frecuente', alertaMedica: 'Alergia a Penicilina', alertaAdministrativa: 'Sin alerta', domicilio: 'Calle Principal 123', ciudad: 'Ciudad de México', pais: 'México', saldo: 1500, ultimaVisita: '2026-02-15' },
-        { id: '2', folio: '000002', nombres: 'Lucía', apellidos: 'Fernández', email: 'lucia.f@hotmail.com', telefono: '555-987-6543', genero: 'Femenino', estadoCivil: 'Casada', fechaNacimiento: '1985-08-22', tipoPaciente: 'Nuevo', alertaMedica: 'Sin alerta', alertaAdministrativa: 'Deuda Pendiente', domicilio: 'Av. Secundaria 456', ciudad: 'Guadalajara', pais: 'México', saldo: -500, ultimaVisita: '2026-03-01' },
-    ]);
+    const [patients, setPatients] = useState<Patient[]>([]);
 
     // Schema version — bump to force-clear stale localStorage on breaking changes
     const SCHEMA_V = 'v2.7';
