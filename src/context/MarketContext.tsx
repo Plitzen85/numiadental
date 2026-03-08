@@ -245,6 +245,8 @@ export const MarketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     });
     const clinicProfileRef = useRef<ClinicProfile | null>(null);
     const hasSyncedRef = useRef(false);
+    const patientsRef = useRef<Patient[]>([]);
+    const skipPatientsPersist = useRef(true); // skip first effect run (mount hydration)
 
     // Schema version — bump to force-clear stale localStorage on breaking changes
     const SCHEMA_V = 'v2.7';
@@ -340,10 +342,22 @@ export const MarketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
             const cloudProfile = await loadClinicProfile<ClinicProfile>();
             if (cloudProfile) {
                 console.log('[MarketContext] Cloud profile loaded successfully:', cloudProfile.nombre);
-                setClinicProfileState(cloudProfile);
-                if (cloudProfile.patients !== undefined) setPatientsState(cloudProfile.patients);
-                localStorage.setItem('clinicProfile', JSON.stringify(cloudProfile));
+                // Merge: prefer cloud patients if present, otherwise keep local patients
+                const localPatients = patientsRef.current;
+                const mergedPatients = cloudProfile.patients ?? localPatients;
+                const merged = { ...cloudProfile, patients: mergedPatients };
+                setClinicProfileState(merged);
+                // Skip the patients useEffect persist triggered by this state update
+                skipPatientsPersist.current = true;
+                setPatientsState(mergedPatients);
+                localStorage.setItem('clinicProfile', JSON.stringify(merged));
                 localStorage.setItem('clinicProfile_schema', SCHEMA_V);
+                // If cloud was missing patients but we have local ones, back-fill to cloud
+                if (cloudProfile.patients === undefined && localPatients.length > 0) {
+                    saveClinicProfile(merged).catch(e =>
+                        console.error('[MarketContext] Failed to back-fill patients to cloud:', e)
+                    );
+                }
                 setSyncError(null);
                 setHasSyncedFromCloud(true);
                 hasSyncedRef.current = true;
@@ -385,9 +399,11 @@ export const MarketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
                     console.log('[MarketContext] Realtime update received:', payload);
                     const newProfile = payload.new.profile_json as ClinicProfile;
                     if (newProfile) {
-                        setClinicProfileState(newProfile);
-                        if (newProfile.patients !== undefined) setPatientsState(newProfile.patients);
-                        localStorage.setItem('clinicProfile', JSON.stringify(newProfile));
+                        const merged = { ...newProfile, patients: newProfile.patients ?? patientsRef.current };
+                        setClinicProfileState(merged);
+                        skipPatientsPersist.current = true;
+                        setPatientsState(merged.patients ?? []);
+                        localStorage.setItem('clinicProfile', JSON.stringify(merged));
                         localStorage.setItem('clinicProfile_schema', SCHEMA_V);
                         setSyncError(null);
                     }
@@ -426,29 +442,35 @@ export const MarketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         }
     };
 
-    // Keep refs current for use inside callbacks
+    // Keep refs current (always fresh values without stale closures)
     useEffect(() => { clinicProfileRef.current = clinicProfile; }, [clinicProfile]);
     useEffect(() => { hasSyncedRef.current = hasSyncedFromCloud; }, [hasSyncedFromCloud]);
+    useEffect(() => { patientsRef.current = patients; }, [patients]);
 
-    // setPatients: updates state AND persists patients inside clinicProfile to Supabase
-    const setPatients: React.Dispatch<React.SetStateAction<Patient[]>> = useCallback((updater) => {
-        setPatientsState(prev => {
-            const next = typeof updater === 'function' ? updater(prev) : updater;
-            const profile = clinicProfileRef.current;
-            if (profile) {
-                const updated = { ...profile, patients: next };
-                clinicProfileRef.current = updated;
-                setClinicProfileState(updated);
-                localStorage.setItem('clinicProfile', JSON.stringify(updated));
-                if (hasSyncedRef.current) {
-                    saveClinicProfile(updated).catch(e =>
-                        console.error('[MarketContext] Failed to persist patients:', e)
-                    );
-                }
-            }
-            return next;
-        });
-    }, []);
+    // Persist patients to localStorage + Supabase whenever they change
+    // skipPatientsPersist guards against saving during cloud hydration (not a user change)
+    useEffect(() => {
+        if (skipPatientsPersist.current) {
+            skipPatientsPersist.current = false;
+            return;
+        }
+        const profile = clinicProfileRef.current;
+        if (!profile) return;
+        const updated = { ...profile, patients };
+        setClinicProfileState(updated);
+        localStorage.setItem('clinicProfile', JSON.stringify(updated));
+        if (hasSyncedRef.current) {
+            saveClinicProfile(updated).catch(e =>
+                console.error('[MarketContext] Failed to persist patients:', e)
+            );
+        }
+    }, [patients]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // setPatients: just updates state; the useEffect above handles persistence
+    const setPatients: React.Dispatch<React.SetStateAction<Patient[]>> = useCallback(
+        (updater) => setPatientsState(updater),
+        []
+    );
 
     // RBAC helpers
     const hasPermission = (module: keyof ModulePermissions): boolean => {
