@@ -244,7 +244,19 @@ const TreatmentCard: React.FC<{
     onDelete: () => void;
     onStatusChange: (s: TreatmentStatus) => void;
 }> = ({ item, finalPrice, onEdit, onDelete, onStatusChange }) => {
+    const [pendingDelete, setPendingDelete] = useState(false);
     const nexts = NEXT_STATUSES[item.status];
+
+    const handleDeleteClick = () => {
+        if (pendingDelete) {
+            onDelete();
+        } else {
+            setPendingDelete(true);
+            // Auto-reset after 4s if user doesn't confirm
+            setTimeout(() => setPendingDelete(false), 4000);
+        }
+    };
+
     return (
         <div className="bg-black/30 border border-white/10 rounded-xl p-3 group relative">
             {/* Name + actions */}
@@ -257,9 +269,31 @@ const TreatmentCard: React.FC<{
                     )}
                     <p className="text-white text-xs font-bold leading-tight truncate">{item.name}</p>
                 </div>
-                <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                    <button onClick={onEdit}   className="text-clinical/40 hover:text-electric p-0.5 transition-colors"><Edit2  className="w-3 h-3" /></button>
-                    <button onClick={onDelete} className="text-clinical/40 hover:text-red-400 p-0.5 transition-colors"><Trash2 className="w-3 h-3" /></button>
+                <div className="flex items-center gap-0.5 flex-shrink-0">
+                    {!pendingDelete && (
+                        <button type="button" onClick={onEdit} title="Editar"
+                            className="text-clinical/40 hover:text-electric p-0.5 transition-colors opacity-0 group-hover:opacity-100">
+                            <Edit2 className="w-3 h-3" />
+                        </button>
+                    )}
+                    {pendingDelete ? (
+                        <div className="flex items-center gap-1">
+                            <span className="text-[8px] text-red-400 font-bold">¿Eliminar?</span>
+                            <button type="button" onClick={handleDeleteClick} title="Confirmar eliminación"
+                                className="text-[8px] bg-red-600 text-white px-1.5 py-0.5 rounded font-bold hover:bg-red-700 transition-colors">
+                                Sí
+                            </button>
+                            <button type="button" onClick={() => setPendingDelete(false)} title="Cancelar"
+                                className="text-[8px] bg-white/10 text-clinical/60 px-1.5 py-0.5 rounded font-bold hover:bg-white/20 transition-colors">
+                                No
+                            </button>
+                        </div>
+                    ) : (
+                        <button type="button" onClick={handleDeleteClick} title="Eliminar tratamiento"
+                            className="text-clinical/40 hover:text-red-400 p-0.5 transition-colors opacity-0 group-hover:opacity-100">
+                            <Trash2 className="w-3 h-3" />
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -279,10 +313,9 @@ const TreatmentCard: React.FC<{
                 <div className="flex gap-1 flex-wrap mt-2 pt-2 border-t border-white/5">
                     {nexts.map(s => {
                         const scfg = STATUS_CONFIG[s];
-                        // Style forward moves prominently, backward/cancel subtly
                         const isForward = s !== 'cancelled' && s !== 'pending';
                         return (
-                            <button key={s} onClick={() => onStatusChange(s)}
+                            <button type="button" key={s} onClick={() => onStatusChange(s)}
                                 className={`text-[8px] font-bold px-2 py-1 rounded-full border transition-all
                                     ${isForward
                                         ? `${scfg.bg} ${scfg.color} ${scfg.border} hover:opacity-100 opacity-80`

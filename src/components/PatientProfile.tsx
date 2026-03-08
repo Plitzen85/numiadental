@@ -40,6 +40,7 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patie
     const [isAIViewerOpen, setIsAIViewerOpen] = useState(false);
 
     // ── Finance state ────────────────────────────────────────────────────────
+    const [selectedTreatmentId, setSelectedTreatmentId] = useState<string>('__custom__');
     const [conceptoCobro, setConceptoCobro] = useState(`Tratamiento: ${patientName}`);
     const [cuentaCobro, setCuentaCobro] = useState<AccountType>('bbva');
     const [montoCobro, setMontoCobro] = useState('');
@@ -460,10 +461,61 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patie
                                                 </div>
                                             ) : (
                                                 <form onSubmit={handleCobroSubmit} className="space-y-5 relative z-10">
-                                                    <div>
-                                                        <label className="text-xs text-clinical/60 mb-1 block">Concepto del Cobro</label>
-                                                        <input title="Concepto" type="text" required value={conceptoCobro} onChange={e => setConceptoCobro(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white focus:border-premium transition-colors outline-none" />
-                                                    </div>
+                                                    {/* Concepto — linked to treatment plan items */}
+                                                    {(() => {
+                                                        const activeItems = treatmentPlan.items.filter(i => i.status !== 'cancelled');
+                                                        const handleTxSelect = (txId: string) => {
+                                                            setSelectedTreatmentId(txId);
+                                                            if (txId === '__custom__') {
+                                                                setConceptoCobro(`Tratamiento: ${patientName}`);
+                                                                setMontoCobro('');
+                                                            } else {
+                                                                const tx = activeItems.find(i => i.id === txId);
+                                                                if (tx) {
+                                                                    const final = tx.price - tx.price * (tx.discount / 100);
+                                                                    setConceptoCobro(`${tx.name}${tx.toothNumber ? ` (D-${tx.toothNumber})` : ''} — ${patientName}`);
+                                                                    setMontoCobro(String(Math.round(final)));
+                                                                }
+                                                            }
+                                                        };
+                                                        return (
+                                                            <div className="space-y-2">
+                                                                <label className="text-xs text-clinical/60 mb-1 block">Concepto del Cobro</label>
+                                                                <select
+                                                                    title="Seleccionar tratamiento"
+                                                                    value={selectedTreatmentId}
+                                                                    onChange={e => handleTxSelect(e.target.value)}
+                                                                    className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white focus:border-premium transition-colors outline-none"
+                                                                >
+                                                                    {activeItems.length > 0 && (
+                                                                        <optgroup label="Tratamientos del plan">
+                                                                            {activeItems.map(tx => {
+                                                                                const final = tx.price - tx.price * (tx.discount / 100);
+                                                                                return (
+                                                                                    <option key={tx.id} value={tx.id}>
+                                                                                        {tx.name}{tx.toothNumber ? ` (D-${tx.toothNumber})` : ''} — ${final.toLocaleString('es-MX')}
+                                                                                        {tx.status === 'paid' ? ' ✓' : ''}
+                                                                                    </option>
+                                                                                );
+                                                                            })}
+                                                                        </optgroup>
+                                                                    )}
+                                                                    <option value="__custom__">— Otro concepto personalizado —</option>
+                                                                </select>
+                                                                {selectedTreatmentId === '__custom__' && (
+                                                                    <input
+                                                                        title="Concepto personalizado"
+                                                                        type="text" required
+                                                                        value={conceptoCobro}
+                                                                        onChange={e => setConceptoCobro(e.target.value)}
+                                                                        placeholder={`Tratamiento: ${patientName}`}
+                                                                        className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white focus:border-premium transition-colors outline-none"
+                                                                    />
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })()}
+
                                                     <div className="grid grid-cols-2 gap-4">
                                                         <div>
                                                             <label className="text-xs text-clinical/60 mb-1 block">Cuenta</label>
