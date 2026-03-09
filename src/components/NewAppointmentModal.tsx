@@ -11,13 +11,14 @@ interface NewAppointmentModalProps {
     initialDoctorId?: string;
     selectedDate?: Date;
     onAppointmentCreated?: () => void;
-    onCreatePatient?: (name: string) => void; // called when saving without a registered patient
-    onNeedNewPatient?: (name: string) => void; // called when user clicks "Paciente Nuevo" in dropdown
-    initialLinkedPatientId?: string;           // auto-links a patient when set (after returning from create-patient)
+    onCreatePatient?: (name: string) => void;
+    onNeedNewPatient?: (name: string) => void;
+    initialLinkedPatientId?: string;
+    editAppointment?: import('../lib/agendaLogic').AppointmentType; // when set, modal edits this appointment
 }
 
 export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
-    isOpen, onClose, initialTime, initialDoctorId, selectedDate, onAppointmentCreated, onCreatePatient, onNeedNewPatient, initialLinkedPatientId,
+    isOpen, onClose, initialTime, initialDoctorId, selectedDate, onAppointmentCreated, onCreatePatient, onNeedNewPatient, initialLinkedPatientId, editAppointment,
 }) => {
     const { clinicProfile, appointments, setAppointments, patients } = useMarket();
     const doctors = (clinicProfile?.staff || []).filter(isDoctor);
@@ -32,14 +33,32 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
     // Sync external props with internal state when modal opens
     useEffect(() => {
         if (isOpen) {
-            if (initialDoctorId) {
-                setSelectedDoctor(initialDoctorId);
-            }
-            if (initialTime) {
-                setModalFormState(prev => ({ ...prev, datetime_start: `2024-03-01T${initialTime}` }));
+            if (editAppointment) {
+                // Edit mode: pre-fill all fields from the existing appointment
+                setSelectedDoctor(editAppointment.doctorId);
+                setModalFormState(prev => ({
+                    ...prev,
+                    datetime_start: `2024-03-01T${editAppointment.startTime}`,
+                    search: editAppointment.patientName,
+                }));
+                // Auto-link patient if found in the list
+                const found = patients.find(p =>
+                    `${p.nombres} ${p.apellidos}`.toLowerCase() === editAppointment.patientName.toLowerCase() ||
+                    editAppointment.patientName.toLowerCase().includes(p.nombres.toLowerCase())
+                );
+                if (found) setLinkedPatientId(found.id);
+                // Pre-select treatments from procedure string
+                const procs = editAppointment.procedure.split(', ').filter(t =>
+                    ['Examen Dental','Limpieza','Extracción','Blanqueamiento','Implante','Ortodoncia'].includes(t)
+                );
+                if (procs.length) setSelectedTreatments(procs);
+            } else {
+                if (initialDoctorId) setSelectedDoctor(initialDoctorId);
+                if (initialTime) setModalFormState(prev => ({ ...prev, datetime_start: `2024-03-01T${initialTime}` }));
             }
         }
-    }, [isOpen, initialDoctorId, initialTime]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isOpen, editAppointment, initialDoctorId, initialTime]);
 
     // Patient search state
     const [linkedPatientId, setLinkedPatientId] = useState<string | null>(null);
@@ -179,14 +198,22 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
             googleCalendarEventId: gcalEventId,
         };
 
-        setAppointments([...appointments, newAppt]);
-        onAppointmentCreated?.();
-
-        // If no patient was linked to a CRM record, prompt to create one
-        const isPatientRegistered = Boolean(linkedPatientId);
-        handleClose();
-        if (!isPatientRegistered && onCreatePatient) {
-            onCreatePatient(patientName !== 'Paciente Nuevo' ? patientName : '');
+        if (editAppointment) {
+            // Edit mode: update existing appointment
+            setAppointments(prev => prev.map(a =>
+                a.id === editAppointment.id ? { ...a, ...newAppt, id: editAppointment.id, googleCalendarEventId: editAppointment.googleCalendarEventId } : a
+            ));
+            onAppointmentCreated?.();
+            handleClose();
+        } else {
+            // Create mode
+            setAppointments([...appointments, newAppt]);
+            onAppointmentCreated?.();
+            const isPatientRegistered = Boolean(linkedPatientId);
+            handleClose();
+            if (!isPatientRegistered && onCreatePatient) {
+                onCreatePatient(patientName !== 'Paciente Nuevo' ? patientName : '');
+            }
         }
     };
 
@@ -207,7 +234,7 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
                     >
                         {/* Header */}
                         <div className="flex justify-between items-center p-6 border-b border-gray-100">
-                            <h2 className="text-xl font-bold text-gray-800 font-syne">Nueva cita previa</h2>
+                            <h2 className="text-xl font-bold text-gray-800 font-syne">{editAppointment ? 'Modificar cita' : 'Nueva cita previa'}</h2>
                             <button title="Cerrar modal" aria-label="Cerrar modal" onClick={handleClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
                                 <X className="w-5 h-5 text-gray-500" />
                             </button>

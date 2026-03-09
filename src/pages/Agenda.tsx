@@ -44,6 +44,8 @@ export const Agenda: React.FC = () => {
     const [newPatientInitialName, setNewPatientInitialName] = useState<string | undefined>(undefined);
     const [returnPatientId, setReturnPatientId] = useState<string | undefined>(undefined);
     const [cancelConfirmAppt, setCancelConfirmAppt] = useState<AppointmentType | null>(null);
+    const [apptActionMenu, setApptActionMenu] = useState<AppointmentType | null>(null);
+    const [editingAppt, setEditingAppt] = useState<AppointmentType | undefined>(undefined);
     const [activeTab, setActiveTab] = useState<'calendario' | 'pacientes'>('calendario');
 
     const today = new Date();
@@ -506,21 +508,7 @@ export const Agenda: React.FC = () => {
                                                 return (
                                                     <div
                                                         key={appt.id}
-                                                        onClick={() => {
-                                                            const firstName = appt.patientName.split(' ')[0].toLowerCase();
-                                                            const found = patients.find(p =>
-                                                                p.nombres.toLowerCase().includes(firstName) ||
-                                                                appt.patientName.toLowerCase().includes(p.nombres.toLowerCase())
-                                                            );
-                                                            if (found) {
-                                                                setSelectedPatientId(found.id);
-                                                                setIsPatientViewOpen(true);
-                                                            } else {
-                                                                setEditPatientId(undefined);
-                                                                setNewPatientInitialName(appt.patientName);
-                                                                setIsPatientFormOpen(true);
-                                                            }
-                                                        }}
+                                                        onClick={() => setApptActionMenu(appt)}
                                                         className={`absolute rounded-md border p-2 text-xs overflow-hidden shadow-lg hover:z-50 hover:brightness-110 transition-all backdrop-blur-md flex flex-col pb-6 z-20 hover:scale-[1.02] cursor-pointer ${cardStyle}`}
                                                         style={{
                                                             top: `${yOffset}px`,
@@ -597,11 +585,13 @@ export const Agenda: React.FC = () => {
                     setIsNewAppointmentModalOpen(false);
                     setInitialModalTime(undefined);
                     setInitialModalDoctorId(undefined);
+                    setEditingAppt(undefined);
                 }}
                 initialTime={initialModalTime}
                 initialDoctorId={initialModalDoctorId}
                 selectedDate={new Date(currentYear, currentMonth, selectedDate)}
-                onAppointmentCreated={() => syncGoogleCalendar()}
+                editAppointment={editingAppt}
+                onAppointmentCreated={() => { syncGoogleCalendar(); setEditingAppt(undefined); }}
                 onNeedNewPatient={(name) => {
                     // Open PatientProfileForm ON TOP — NewAppointmentModal stays open
                     setEditPatientId(undefined);
@@ -639,6 +629,91 @@ export const Agenda: React.FC = () => {
                     onClose={() => setIsPatientViewOpen(false)}
                 />
             )}
+
+            {/* APPOINTMENT ACTION MENU */}
+            <AnimatePresence>
+                {apptActionMenu && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+                        onClick={() => setApptActionMenu(null)}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.95, opacity: 0, y: 10 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            exit={{ scale: 0.95, opacity: 0, y: 10 }}
+                            onClick={e => e.stopPropagation()}
+                            className="bg-[#0d1b2e] border border-white/10 rounded-2xl p-6 max-w-sm w-full shadow-2xl"
+                        >
+                            <div className="mb-5">
+                                <div className="font-syne font-bold text-white text-lg">{apptActionMenu.patientName}</div>
+                                <div className="text-clinical/50 text-xs mt-0.5">{apptActionMenu.procedure} · {apptActionMenu.startTime} ({apptActionMenu.durationMinutes}m)</div>
+                            </div>
+                            <div className="space-y-3">
+                                {/* Open patient profile */}
+                                <button
+                                    onClick={() => {
+                                        setApptActionMenu(null);
+                                        const firstName = apptActionMenu.patientName.split(' ')[0].toLowerCase();
+                                        const found = patients.find(p =>
+                                            p.nombres.toLowerCase().includes(firstName) ||
+                                            apptActionMenu.patientName.toLowerCase().includes(p.nombres.toLowerCase())
+                                        );
+                                        if (found) {
+                                            setSelectedPatientId(found.id);
+                                            setIsPatientViewOpen(true);
+                                        } else {
+                                            setEditPatientId(undefined);
+                                            setNewPatientInitialName(apptActionMenu.patientName);
+                                            setIsPatientFormOpen(true);
+                                        }
+                                    }}
+                                    className="w-full flex items-center gap-3 p-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors text-left"
+                                >
+                                    <div className="w-9 h-9 rounded-lg bg-electric/10 border border-electric/20 flex items-center justify-center shrink-0">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5 text-electric">
+                                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <div className="font-bold text-white text-sm">Ver perfil del paciente</div>
+                                        <div className="text-clinical/40 text-xs">Expediente, historial y tratamientos</div>
+                                    </div>
+                                </button>
+
+                                {/* Edit appointment */}
+                                <button
+                                    onClick={() => {
+                                        setApptActionMenu(null);
+                                        setEditingAppt(apptActionMenu);
+                                        setIsNewAppointmentModalOpen(true);
+                                    }}
+                                    className="w-full flex items-center gap-3 p-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors text-left"
+                                >
+                                    <div className="w-9 h-9 rounded-lg bg-premium/10 border border-premium/20 flex items-center justify-center shrink-0">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5 text-premium">
+                                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <div className="font-bold text-white text-sm">Modificar cita</div>
+                                        <div className="text-clinical/40 text-xs">Cambiar hora, doctor, tratamiento</div>
+                                    </div>
+                                </button>
+                            </div>
+
+                            <button
+                                onClick={() => setApptActionMenu(null)}
+                                className="w-full mt-4 py-2 rounded-lg border border-white/10 text-clinical/50 text-sm hover:bg-white/5 transition-colors"
+                            >
+                                Cerrar
+                            </button>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* CANCEL CONFIRMATION DIALOG */}
             <AnimatePresence>
