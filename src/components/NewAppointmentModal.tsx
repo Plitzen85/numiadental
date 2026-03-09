@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Search, ChevronDown, Check } from 'lucide-react';
 import { useMarket, isDoctor } from '../context/MarketContext';
-import { isConnected, createCalendarEvent } from '../lib/googleCalendar';
+import { isConnected, createCalendarEvent, deleteCalendarEvent } from '../lib/googleCalendar';
 
 interface NewAppointmentModalProps {
     isOpen: boolean;
@@ -174,6 +174,10 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
         // Push to Google Calendar if the doctor is connected
         let gcalEventId: string | undefined;
         if (isConnected(selectedDoctor)) {
+            // Edit mode: delete old gcal event first to avoid duplicates
+            if (editAppointment?.googleCalendarEventId) {
+                await deleteCalendarEvent(editAppointment.doctorId, editAppointment.googleCalendarEventId);
+            }
             const eventDate = selectedDate ?? startDt;
             const gcalId = await createCalendarEvent({
                 doctorId: selectedDoctor,
@@ -199,9 +203,9 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
         };
 
         if (editAppointment) {
-            // Edit mode: update existing appointment
+            // Edit mode: update existing appointment with new gcalEventId
             setAppointments(prev => prev.map(a =>
-                a.id === editAppointment.id ? { ...a, ...newAppt, id: editAppointment.id, googleCalendarEventId: editAppointment.googleCalendarEventId } : a
+                a.id === editAppointment.id ? { ...a, ...newAppt, id: editAppointment.id } : a
             ));
             onAppointmentCreated?.();
             handleClose();
