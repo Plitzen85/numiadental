@@ -9,13 +9,15 @@ interface NewAppointmentModalProps {
     onClose: () => void;
     initialTime?: string;
     initialDoctorId?: string;
-    selectedDate?: Date;           // date shown in the agenda grid
-    onAppointmentCreated?: () => void; // triggers a Google Calendar re-fetch
+    selectedDate?: Date;
+    onAppointmentCreated?: () => void;
     onCreatePatient?: (name: string) => void; // called when saving without a registered patient
+    onNeedNewPatient?: (name: string) => void; // called when user clicks "Paciente Nuevo" in dropdown
+    initialLinkedPatientId?: string;           // auto-links a patient when set (after returning from create-patient)
 }
 
 export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
-    isOpen, onClose, initialTime, initialDoctorId, selectedDate, onAppointmentCreated, onCreatePatient,
+    isOpen, onClose, initialTime, initialDoctorId, selectedDate, onAppointmentCreated, onCreatePatient, onNeedNewPatient, initialLinkedPatientId,
 }) => {
     const { clinicProfile, appointments, setAppointments, patients } = useMarket();
     const doctors = (clinicProfile?.staff || []).filter(isDoctor);
@@ -43,6 +45,19 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
     const [linkedPatientId, setLinkedPatientId] = useState<string | null>(null);
     const [searchSuggestions, setSearchSuggestions] = useState<typeof patients>([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
+
+    // Auto-link a patient when returning from the create-patient flow
+    useEffect(() => {
+        if (initialLinkedPatientId && isOpen) {
+            const p = patients.find(x => x.id === initialLinkedPatientId);
+            if (p) {
+                handleModalInput('search', `${p.nombres} ${p.apellidos}`);
+                setLinkedPatientId(p.id);
+                setShowSuggestions(false);
+            }
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [initialLinkedPatientId, isOpen]);
 
     const [selectedTreatments, setSelectedTreatments] = useState<string[]>([]);
     const [selectedLabOrders, setSelectedLabOrders] = useState<string[]>([]);
@@ -220,13 +235,13 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
                                         placeholder="Nombre, folio o teléfono del paciente"
                                         className={`w-full py-3 pr-10 text-gray-800 rounded-lg border focus:outline-none focus:border-electric focus:ring-1 focus:ring-electric transition-all text-sm ${linkedPatientId ? 'pl-8 border-green-400 bg-green-50' : 'pl-4 border-gray-200'}`}
                                     />
-                                    {showSuggestions && searchSuggestions.length > 0 && (
-                                        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-30 max-h-52 overflow-y-auto">
+                                    {showSuggestions && (
+                                        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-30 max-h-64 overflow-y-auto">
                                             {searchSuggestions.map(p => (
                                                 <div
                                                     key={p.id}
                                                     onMouseDown={() => handleSelectPatient(p)}
-                                                    className="px-4 py-2.5 hover:bg-green-50 cursor-pointer flex items-center justify-between border-b border-gray-100 last:border-0"
+                                                    className="px-4 py-2.5 hover:bg-green-50 cursor-pointer flex items-center justify-between border-b border-gray-100"
                                                 >
                                                     <div>
                                                         <div className="text-sm font-semibold text-gray-800">{p.nombres} {p.apellidos}</div>
@@ -235,12 +250,24 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
                                                     <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded">{p.tipoPaciente}</span>
                                                 </div>
                                             ))}
-                                        </div>
-                                    )}
-                                    {showSuggestions && searchSuggestions.length === 0 && (modalFormState["search"] || '').length >= 2 && (
-                                        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-30">
-                                            <div className="px-4 py-3 text-sm text-gray-400 italic">
-                                                Paciente no registrado — se creará su perfil al guardar
+                                            {/* Always show "Paciente Nuevo" at the bottom */}
+                                            <div
+                                                onMouseDown={() => {
+                                                    const name = (modalFormState["search"] || '').trim();
+                                                    setShowSuggestions(false);
+                                                    onNeedNewPatient?.(name);
+                                                }}
+                                                className="px-4 py-3 hover:bg-blue-50 cursor-pointer flex items-center gap-2 border-t border-gray-100"
+                                            >
+                                                <div className="w-6 h-6 rounded-full bg-electric/20 flex items-center justify-center shrink-0">
+                                                    <span className="text-electric text-sm font-bold leading-none">+</span>
+                                                </div>
+                                                <div>
+                                                    <div className="text-sm font-semibold text-gray-700">Paciente Nuevo</div>
+                                                    {(modalFormState["search"] || '').trim() && (
+                                                        <div className="text-xs text-gray-400">Crear perfil para "{(modalFormState["search"] || '').trim()}"</div>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
                                     )}

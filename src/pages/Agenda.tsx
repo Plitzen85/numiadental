@@ -41,6 +41,7 @@ export const Agenda: React.FC = () => {
     const [selectedPatientId, setSelectedPatientId] = useState<string | undefined>(undefined);
     const [editPatientId, setEditPatientId] = useState<string | undefined>(undefined);
     const [newPatientInitialName, setNewPatientInitialName] = useState<string | undefined>(undefined);
+    const [returnPatientId, setReturnPatientId] = useState<string | undefined>(undefined);
     const [activeTab, setActiveTab] = useState<'calendario' | 'pacientes'>('calendario');
 
     const today = new Date();
@@ -562,11 +563,19 @@ export const Agenda: React.FC = () => {
                 initialDoctorId={initialModalDoctorId}
                 selectedDate={new Date(currentYear, currentMonth, selectedDate)}
                 onAppointmentCreated={() => syncGoogleCalendar()}
+                onNeedNewPatient={(name) => {
+                    // Open PatientProfileForm ON TOP — NewAppointmentModal stays open
+                    setEditPatientId(undefined);
+                    setNewPatientInitialName(name || undefined);
+                    setReturnPatientId(undefined);
+                    setIsPatientFormOpen(true);
+                }}
                 onCreatePatient={(name) => {
                     setEditPatientId(undefined);
                     setNewPatientInitialName(name || undefined);
                     setIsPatientFormOpen(true);
                 }}
+                initialLinkedPatientId={returnPatientId}
             />
 
             {/* NEW PATIENT FORM */}
@@ -575,6 +584,12 @@ export const Agenda: React.FC = () => {
                 onClose={() => { setIsPatientFormOpen(false); setEditPatientId(undefined); setNewPatientInitialName(undefined); }}
                 patientId={editPatientId}
                 initialName={newPatientInitialName}
+                onPatientSaved={(id) => {
+                    // If we came from the cita modal, auto-link the new patient back
+                    if (isNewAppointmentModalOpen) {
+                        setReturnPatientId(id);
+                    }
+                }}
             />
 
             {/* PATIENT PROFILE VIEW */}
