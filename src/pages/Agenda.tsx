@@ -7,6 +7,7 @@ import {
     fetchCalendarEvents,
     gcalEventToAppointment,
     getConnectedDoctorIds,
+    getAuthorizedDoctorIds,
     silentReconnect,
 } from '../lib/googleCalendar';
 import { NewAppointmentModal } from '../components/NewAppointmentModal';
@@ -91,8 +92,13 @@ export const Agenda: React.FC = () => {
     // -----------------------------------------------------------------------
     useEffect(() => {
         const init = async () => {
-            // Try silent re-auth for each doctor (no popup — uses existing Google session)
-            await Promise.all(doctors.map(d => silentReconnect(d.id)));
+            // Only silently reconnect doctors who have previously authorized.
+            // getAuthorizedDoctorIds() reads from localStorage — survives page reloads.
+            // GIS reissues the token silently (no popup) if the user is still signed in to Google.
+            const authorizedIds = getAuthorizedDoctorIds();
+            if (authorizedIds.length > 0) {
+                await Promise.all(authorizedIds.map(id => silentReconnect(id)));
+            }
             setConnectedCount(getConnectedDoctorIds().length);
             await syncGoogleCalendar();
         };

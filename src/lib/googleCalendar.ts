@@ -37,14 +37,18 @@ export interface GCalEvent {
 }
 
 // ---------------------------------------------------------------------------
-// Token store — sessionStorage persists within the tab session
+// Token store — localStorage persists across sessions (survives page reload
+// and browser restarts). Tokens expire after ~1 hour but are renewed silently.
+// A separate "authorized" list remembers which doctors have ever consented,
+// so silent reconnect is attempted automatically on every page load.
 // ---------------------------------------------------------------------------
 
 const TOKEN_KEY = 'numia_gcal_tokens';
+const AUTH_KEY  = 'numia_gcal_authorized'; // doctors who have given consent at least once
 
 function loadTokens(): Record<string, GCalToken> {
     try {
-        const raw = sessionStorage.getItem(TOKEN_KEY);
+        const raw = localStorage.getItem(TOKEN_KEY);
         return raw ? JSON.parse(raw) : {};
     } catch {
         return {};
@@ -52,7 +56,29 @@ function loadTokens(): Record<string, GCalToken> {
 }
 
 function persistTokens(tokens: Record<string, GCalToken>) {
-    sessionStorage.setItem(TOKEN_KEY, JSON.stringify(tokens));
+    localStorage.setItem(TOKEN_KEY, JSON.stringify(tokens));
+}
+
+/** Returns doctor IDs that have previously authorized (even if token is now expired). */
+export function getAuthorizedDoctorIds(): string[] {
+    try {
+        const raw = localStorage.getItem(AUTH_KEY);
+        return raw ? JSON.parse(raw) : [];
+    } catch {
+        return [];
+    }
+}
+
+function addToAuthorized(doctorId: string) {
+    const list = getAuthorizedDoctorIds();
+    if (!list.includes(doctorId)) {
+        localStorage.setItem(AUTH_KEY, JSON.stringify([...list, doctorId]));
+    }
+}
+
+function removeFromAuthorized(doctorId: string) {
+    const list = getAuthorizedDoctorIds().filter(id => id !== doctorId);
+    localStorage.setItem(AUTH_KEY, JSON.stringify(list));
 }
 
 let _tokens: Record<string, GCalToken> = loadTokens();
@@ -82,6 +108,7 @@ export function isConnected(doctorId: string): boolean {
 export function disconnectDoctor(doctorId: string) {
     delete _tokens[doctorId];
     persistTokens(_tokens);
+    removeFromAuthorized(doctorId);
 }
 
 export function getClientId(): string {
@@ -93,6 +120,8 @@ export function getClientId(): string {
 // ---------------------------------------------------------------------------
 
 async function storeToken(doctorId: string, accessToken: string, expiresIn: number): Promise<GCalToken> {
+    // Mark this doctor as having authorized at least once (persists forever in localStorage)
+    addToAuthorized(doctorId);
     try {
         const r = await fetch(`https://oauth2.googleapis.com/tokeninfo?access_token=${accessToken}`);
         const info: { email?: string } = await r.json();
