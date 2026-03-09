@@ -7,6 +7,9 @@ export interface AppointmentType {
     durationMinutes: number;
     status: 'scheduled' | 'confirmed' | 'arrived' | 'completed' | 'cancelled';
     paymentStatus?: 'pending' | 'paid';
+    aiNote?: string;
+    googleCalendarEventId?: string;
+    isGoogleCalendarEvent?: boolean;
 }
 
 const MAX_CLINIC_UNITS = 3;

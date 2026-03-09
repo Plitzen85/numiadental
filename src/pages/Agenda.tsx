@@ -1,17 +1,35 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Calendar as CalendarIcon, UserPlus, Sparkles, RefreshCcw, CheckCircle2, Bot } from 'lucide-react';
+import { Calendar as CalendarIcon, UserPlus, Sparkles, RefreshCcw, CheckCircle2, Bot, Wifi } from 'lucide-react';
 import { useMarket, isDoctor } from '../context/MarketContext';
 import { AppointmentType, generateMockAppointments, getActiveUnitsAtTime, parseTimeToMinutes } from '../lib/agendaLogic';
+import {
+    fetchCalendarEvents,
+    gcalEventToAppointment,
+    getConnectedDoctorIds,
+    silentReconnect,
+} from '../lib/googleCalendar';
 import { NewAppointmentModal } from '../components/NewAppointmentModal';
 import { PatientProfileForm } from '../components/PatientProfileForm';
 import { PatientProfile } from '../components/PatientProfile';
 import { PatientDirectory } from '../components/PatientDirectory';
+import { GoogleCalendarSyncModal } from '../components/GoogleCalendarSyncModal';
+
+const POLL_INTERVAL_MS = 30_000; // 30 seconds
 
 export const Agenda: React.FC = () => {
     const { clinicProfile, appointments, setAppointments, setFinanceStats, patients } = useMarket();
     const doctors = (clinicProfile?.staff || []).filter(isDoctor);
-    const [isGoogleSynced, setIsGoogleSynced] = useState(false);
+
+    // --- Google Calendar state ---
+    const [gcalEvents, setGcalEvents] = useState<AppointmentType[]>([]);
+    const [isSyncing, setIsSyncing] = useState(false);
+    const [lastSynced, setLastSynced] = useState<Date | null>(null);
+    const [connectedCount, setConnectedCount] = useState(0);
+    const [isGcalModalOpen, setIsGcalModalOpen] = useState(false);
+    const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    // --- Other UI state ---
     const [isOptimizing, setIsOptimizing] = useState(false);
     const [isOptimized, setIsOptimized] = useState(false);
     const [isNewAppointmentModalOpen, setIsNewAppointmentModalOpen] = useState(false);
@@ -21,56 +39,121 @@ export const Agenda: React.FC = () => {
     const [isPatientViewOpen, setIsPatientViewOpen] = useState(false);
     const [selectedPatientId, setSelectedPatientId] = useState<string | undefined>(undefined);
     const [editPatientId, setEditPatientId] = useState<string | undefined>(undefined);
+    const [activeTab, setActiveTab] = useState<'calendario' | 'pacientes'>('calendario');
 
-    const handleOpenProfile = (id?: string) => {
-        if (id) {
-            setSelectedPatientId(id);
-            setIsPatientViewOpen(true);
-        } else {
-            setEditPatientId(undefined);
-            setIsPatientFormOpen(true);
+    const today = new Date();
+    const [selectedDate, setSelectedDate] = useState<number>(today.getDate());
+    const [currentMonth] = useState<number>(today.getMonth());
+    const [currentYear] = useState<number>(today.getFullYear());
+
+    const START_HOUR = 8;
+    const END_HOUR = 20;
+    const TIME_INTERVAL_MINS = 30;
+
+    const timeSlots = useMemo(() => {
+        const slots: string[] = [];
+        for (let h = START_HOUR; h < END_HOUR; h++) {
+            slots.push(`${h.toString().padStart(2, '0')}:00`);
+            slots.push(`${h.toString().padStart(2, '0')}:30`);
         }
+        return slots;
+    }, []);
+
+    // -----------------------------------------------------------------------
+    // Google Calendar: fetch events for all connected doctors
+    // -----------------------------------------------------------------------
+    const syncGoogleCalendar = useCallback(async () => {
+        const connectedIds = getConnectedDoctorIds();
+        setConnectedCount(connectedIds.length);
+        if (connectedIds.length === 0) return;
+
+        setIsSyncing(true);
+        const date = new Date(currentYear, currentMonth, selectedDate);
+
+        const results = await Promise.all(
+            connectedIds.map(doctorId =>
+                fetchCalendarEvents(doctorId, date).then(events =>
+                    events
+                        .map(e => gcalEventToAppointment(e, doctorId))
+                        .filter((a): a is AppointmentType => a !== null)
+                )
+            )
+        );
+
+        setGcalEvents(results.flat());
+        setLastSynced(new Date());
+        setIsSyncing(false);
+        setConnectedCount(getConnectedDoctorIds().length);
+    }, [selectedDate, currentMonth, currentYear]);
+
+    // -----------------------------------------------------------------------
+    // On mount: attempt silent reconnect for all doctors, then start polling
+    // -----------------------------------------------------------------------
+    useEffect(() => {
+        const init = async () => {
+            // Try silent re-auth for each doctor (no popup — uses existing Google session)
+            await Promise.all(doctors.map(d => silentReconnect(d.id)));
+            setConnectedCount(getConnectedDoctorIds().length);
+            await syncGoogleCalendar();
+        };
+        init();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // only on mount
+
+    // Re-fetch when selected date changes
+    useEffect(() => {
+        syncGoogleCalendar();
+    }, [syncGoogleCalendar]);
+
+    // Auto-poll every 30 s
+    useEffect(() => {
+        if (pollRef.current) clearInterval(pollRef.current);
+        pollRef.current = setInterval(() => {
+            syncGoogleCalendar();
+        }, POLL_INTERVAL_MS);
+        return () => {
+            if (pollRef.current) clearInterval(pollRef.current);
+        };
+    }, [syncGoogleCalendar]);
+
+    // -----------------------------------------------------------------------
+    // Merge local appointments + Google Calendar events (deduplicate by gcal ID)
+    // -----------------------------------------------------------------------
+    const allAppointments = useMemo<AppointmentType[]>(() => {
+        const localGcalIds = new Set(
+            appointments
+                .filter(a => a.googleCalendarEventId)
+                .map(a => a.googleCalendarEventId!)
+        );
+        // Only add gcal events that aren't already tracked locally
+        const newGcalEvents = gcalEvents.filter(
+            e => e.googleCalendarEventId && !localGcalIds.has(e.googleCalendarEventId)
+        );
+        return [...appointments, ...newGcalEvents];
+    }, [appointments, gcalEvents]);
+
+    // -----------------------------------------------------------------------
+    // Handlers
+    // -----------------------------------------------------------------------
+    const handleOpenProfile = (id?: string) => {
+        if (id) { setSelectedPatientId(id); setIsPatientViewOpen(true); }
+        else { setEditPatientId(undefined); setIsPatientFormOpen(true); }
     };
 
     const handleEditPatient = (id: string) => {
         setEditPatientId(id);
         setIsPatientFormOpen(true);
     };
-    const [activeTab, setActiveTab] = useState<'calendario' | 'pacientes'>('calendario');
-
-    // Default to today's date (and current month/year) for the view
-    const today = new Date();
-    const [selectedDate, setSelectedDate] = useState<number>(today.getDate());
-    const [currentMonth] = useState<number>(today.getMonth());
-    const [currentYear] = useState<number>(today.getFullYear());
-
-    // Agenda Time Configurations
-    const START_HOUR = 8; // 8:00 AM
-    const END_HOUR = 20; // 8:00 PM
-    const TIME_INTERVAL_MINS = 30; // Row height represents 30 minutes
-
-    const generateTimeSlots = () => {
-        const slots = [];
-        for (let h = START_HOUR; h < END_HOUR; h++) {
-            slots.push(`${h.toString().padStart(2, '0')}:00`);
-            slots.push(`${h.toString().padStart(2, '0')}:30`);
-        }
-        return slots;
-    };
-
-    const timeSlots = generateTimeSlots();
 
     const handleOptimize = () => {
         setIsOptimizing(true);
         setTimeout(() => {
             setIsOptimizing(false);
             setIsOptimized(true);
-
             setAppointments(prev => {
                 const updated = prev.map(a =>
                     a.id === '5' ? { ...a, startTime: '10:30', aiNote: 'Reprogramado AI: Evita saturación de sillones' } : a
                 );
-
                 updated.push({
                     id: 'ai-1', patientName: 'Carlos Gómez (Lista Espera)', procedure: 'Resina',
                     doctorId: doctors[1]?.id || '2', startTime: '10:30', durationMinutes: 30, status: 'scheduled', aiNote: 'AI Match: Hueco optimizado'
@@ -90,7 +173,6 @@ export const Agenda: React.FC = () => {
 
     const daysOfWeek = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
     const months = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
-
     const selectedDateObj = new Date(currentYear, currentMonth, selectedDate);
     const formattedDateString = `${daysOfWeek[selectedDateObj.getDay()]}, ${selectedDate} de ${months[currentMonth]} ${currentYear}`;
 
@@ -122,17 +204,44 @@ export const Agenda: React.FC = () => {
                     </div>
                 </div>
                 <div className="flex items-center gap-3">
+                    {/* Google Calendar sync button — always visible, shows live status */}
                     <button
-                        onClick={() => setIsGoogleSynced(!isGoogleSynced)}
-                        className={`font-bold px-4 py-2 rounded-lg flex flex-col items-center justify-center transition-all ${isGoogleSynced ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-white/5 text-clinical hover:bg-white/10 border border-white/10'}`}>
+                        onClick={() => setIsGcalModalOpen(true)}
+                        className={`font-bold px-4 py-2 rounded-lg flex flex-col items-center justify-center transition-all border ${
+                            connectedCount > 0
+                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                : 'bg-white/5 text-clinical hover:bg-white/10 border-white/10'
+                        }`}
+                    >
                         <div className="flex items-center gap-2">
-                            <RefreshCcw className={`w-4 h-4 ${isGoogleSynced ? 'animate-spin-slow' : ''}`} />
-                            {isGoogleSynced ? 'Google Calendar Sync Activo' : 'Sincronizar G-Calendar'}
+                            {isSyncing ? (
+                                <RefreshCcw className="w-4 h-4 animate-spin" />
+                            ) : connectedCount > 0 ? (
+                                <Wifi className="w-4 h-4" />
+                            ) : (
+                                <RefreshCcw className="w-4 h-4" />
+                            )}
+                            {connectedCount > 0 ? 'G-Calendar Conectado' : 'Sincronizar G-Calendar'}
                         </div>
-                        {isGoogleSynced && doctors.length > 0 && (
-                            <span className="text-[10px] font-mono opacity-80 mt-1">Sincronizando {doctors.length} cuentas (vía Email)</span>
+                        {connectedCount > 0 && (
+                            <span className="text-[10px] font-mono opacity-70 mt-0.5">
+                                {connectedCount} {connectedCount === 1 ? 'cuenta' : 'cuentas'} · {isSyncing ? 'Actualizando…' : lastSynced ? `Última sync ${lastSynced.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}` : 'En tiempo real'}
+                            </span>
                         )}
                     </button>
+
+                    {/* Force-refresh button — only shown when connected */}
+                    {connectedCount > 0 && (
+                        <button
+                            onClick={() => syncGoogleCalendar()}
+                            disabled={isSyncing}
+                            title="Forzar sincronización ahora"
+                            className="p-2 rounded-lg border border-white/10 text-clinical/60 hover:text-emerald-400 hover:border-emerald-500/30 hover:bg-emerald-500/5 transition-colors disabled:opacity-40"
+                        >
+                            <RefreshCcw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                        </button>
+                    )}
+
                     <button
                         onClick={() => handleOpenProfile()}
                         className="bg-white/10 text-white font-bold px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-white/20 transition-colors border border-white/10"
@@ -165,7 +274,11 @@ export const Agenda: React.FC = () => {
                                     {Array.from({ length: 31 }).map((_, i) => (
                                         <button
                                             key={i}
-                                            onClick={() => { setSelectedDate(i + 1); setIsOptimized(false); setAppointments(generateMockAppointments()); }}
+                                            onClick={() => {
+                                                setSelectedDate(i + 1);
+                                                setIsOptimized(false);
+                                                setAppointments(generateMockAppointments());
+                                            }}
                                             className={`p-2 rounded-lg hover:bg-white/10 transition-colors ${i + 1 === selectedDate ? 'bg-electric text-cobalt' : 'text-clinical/80'} ${i + 1 === today.getDate() && i + 1 !== selectedDate ? 'border border-electric/30' : ''}`}>
                                             {i + 1}
                                         </button>
@@ -188,6 +301,21 @@ export const Agenda: React.FC = () => {
                                     {isOptimizing ? 'Analizando Patrones...' : isOptimized ? 'Agenda Optimizada' : 'Optimizar Agenda'}
                                 </button>
                             </div>
+
+                            {/* Google Calendar legend */}
+                            {connectedCount > 0 && (
+                                <div className="glass-panel p-4 rounded-2xl space-y-2">
+                                    <p className="text-[10px] text-clinical/40 uppercase font-bold tracking-wider">Leyenda</p>
+                                    <div className="flex items-center gap-2 text-xs text-clinical/70">
+                                        <div className="w-3 h-3 rounded-sm bg-blue-500/30 border border-blue-400/50 shrink-0"></div>
+                                        Evento de Google Calendar
+                                    </div>
+                                    <div className="flex items-center gap-2 text-xs text-clinical/70">
+                                        <div className="w-3 h-3 rounded-sm bg-electric/30 border border-electric/50 shrink-0"></div>
+                                        Cita en Nümia
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         {/* Daily Schedule */}
@@ -219,6 +347,12 @@ export const Agenda: React.FC = () => {
                                                 <div className="w-2 h-2 rounded-full bg-electric"></div>
                                                 <span>Capacidad Disponible</span>
                                             </div>
+                                            {connectedCount > 0 && (
+                                                <div className="flex items-center gap-1">
+                                                    <div className="w-2 h-2 rounded-full bg-blue-400"></div>
+                                                    <span>Google Calendar ({gcalEvents.length})</span>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
@@ -235,6 +369,12 @@ export const Agenda: React.FC = () => {
                                                 <div key={doctor.id} className="w-64 shrink-0 text-center py-3 border-r border-white/5 relative bg-[#0B1526]">
                                                     <div className="font-syne font-bold text-white text-sm truncate px-2">{doctor.nombres}</div>
                                                     <div className="text-[10px] text-clinical/60 uppercase">{doctor.especialidad}</div>
+                                                    {/* Google Calendar connected indicator */}
+                                                    {getConnectedDoctorIds().includes(doctor.id) && (
+                                                        <div className="absolute top-1 right-2 flex items-center gap-0.5">
+                                                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></div>
+                                                        </div>
+                                                    )}
                                                     <div className={`absolute bottom-0 left-0 w-full h-1 ${doctor.colorTheme?.split(' ')[0] || 'bg-white/20'}`}></div>
                                                 </div>
                                             ))}
@@ -243,17 +383,14 @@ export const Agenda: React.FC = () => {
                                         {/* Grid Body (Time Slots) */}
                                         <div className="relative">
                                             {timeSlots.map((time) => {
-                                                const activeUnits = getActiveUnitsAtTime(appointments, time);
+                                                const activeUnits = getActiveUnitsAtTime(allAppointments, time);
                                                 const isMaxCapacity = activeUnits >= 3;
 
                                                 return (
                                                     <div key={time} className="flex group relative">
-                                                        {/* Sticky Time Column */}
                                                         <div className="w-20 shrink-0 border-r border-b border-white/10 sticky left-0 z-30 bg-[#0B1526] text-center py-2 text-xs text-clinical/80 font-medium">
                                                             <span className="-translate-y-3 block bg-[#0B1526] px-1 mx-auto w-fit relative">{time}</span>
                                                         </div>
-
-                                                        {/* Doctor Columns for this Time Slot */}
                                                         {doctors.map((doctor: any) => (
                                                             <div
                                                                 key={`${doctor.id}-${time}`}
@@ -274,55 +411,62 @@ export const Agenda: React.FC = () => {
                                             })}
 
                                             {/* APPOINTMENT OVERLAYS */}
-                                            {appointments.map((appt: any) => {
+                                            {allAppointments.map((appt: any) => {
                                                 const doctorIndex = doctors.findIndex(d => d.id === appt.doctorId);
                                                 if (doctorIndex === -1) return null;
 
                                                 const startMins = parseTimeToMinutes(appt.startTime);
                                                 const gridStartMins = START_HOUR * 60;
-
-                                                // Y Position: Calculate distance from top. 48px is the height of one 30min slot (h-12)
                                                 const yOffset = ((startMins - gridStartMins) / TIME_INTERVAL_MINS) * 48;
-                                                // Height: duration / 30 mins * 48px
                                                 const height = (appt.durationMinutes / TIME_INTERVAL_MINS) * 48;
-
                                                 const doctor = doctors[doctorIndex];
-                                                const colorTheme = doctor.colorTheme || 'bg-white/10 border-white/20 text-white shadow-none';
 
-                                                const getStatusColor = (status: string) => {
-                                                    if (status === 'cancelled') return 'border-b-4 border-red-500';
-                                                    if (status === 'completed') return 'border-b-4 border-emerald-600';
-                                                    if (status === 'arrived') return 'border-b-4 border-green-400';
-                                                    if (status === 'confirmed') return 'border-b-4 border-blue-400';
-                                                    if (status === 'scheduled') return 'border-b-4 border-yellow-400';
-                                                    return 'border-b-4 border-transparent';
+                                                // Status-based card background (overrides doctor color)
+                                                // Google Calendar events always blue
+                                                const getCardStyle = (status: string, isGcal: boolean) => {
+                                                    if (isGcal) return 'bg-blue-500/20 border-blue-400/40 text-blue-100';
+                                                    if (status === 'cancelled') return 'bg-red-500/20 border-red-500/40 text-red-100';
+                                                    if (status === 'completed') return 'bg-cyan-500/20 border-cyan-500/40 text-cyan-100';
+                                                    if (status === 'arrived')   return 'bg-purple-500/20 border-purple-500/40 text-purple-100';
+                                                    if (status === 'confirmed') return 'bg-green-500/20 border-green-500/40 text-green-100';
+                                                    return 'bg-gray-500/15 border-gray-400/30 text-gray-100'; // scheduled
                                                 };
 
+                                                // Status change: works for both local and gcal events.
+                                                // If the event is a gcal import, adopt it into local appointments first.
                                                 const handleStatusChange = (e: React.ChangeEvent<HTMLSelectElement>, apptId: string) => {
                                                     e.stopPropagation();
                                                     const newStatus = e.target.value as AppointmentType['status'];
-                                                    setAppointments(prev => prev.map(a => a.id === apptId ? { ...a, status: newStatus } : a));
-
-                                                    // If marked completed, simulate a payment to increase the KPIs
+                                                    const isLocal = appointments.some(a => a.id === apptId);
+                                                    if (isLocal) {
+                                                        setAppointments(prev => prev.map(a => a.id === apptId ? { ...a, status: newStatus } : a));
+                                                    } else {
+                                                        // Adopt gcal event into local state so status is tracked
+                                                        const gcalAppt = gcalEvents.find(ev => ev.id === apptId);
+                                                        if (gcalAppt) setAppointments(prev => [...prev, { ...gcalAppt, status: newStatus }]);
+                                                    }
                                                     if (newStatus === 'completed') {
                                                         setFinanceStats(prev => ({
                                                             ...prev,
-                                                            weeklyIncome: prev.weeklyIncome + 1500, // mock $1500 ticket
+                                                            weeklyIncome: prev.weeklyIncome + 1500,
                                                             monthlyIncome: prev.monthlyIncome + 1500,
                                                             monthlyPatientsTreated: prev.monthlyPatientsTreated + 1
                                                         }));
                                                     }
                                                 };
 
+                                                const cardStyle = getCardStyle(appt.status, appt.isGoogleCalendarEvent);
+
                                                 return (
                                                     <div
                                                         key={appt.id}
                                                         onClick={() => {
-                                                            const pSearch = patients.find(p => p.nombres.includes(appt.patientName.split(' ')[0]) || appt.patientName.includes(p.nombres));
-                                                            handleOpenProfile(pSearch?.id);
+                                                            if (!appt.isGoogleCalendarEvent) {
+                                                                const pSearch = patients.find(p => p.nombres.includes(appt.patientName.split(' ')[0]) || appt.patientName.includes(p.nombres));
+                                                                handleOpenProfile(pSearch?.id);
+                                                            }
                                                         }}
-                                                        className={`absolute rounded-md border p-2 text-xs overflow-hidden shadow-lg hover:z-50 hover:brightness-110 transition-all cursor-pointer backdrop-blur-md flex flex-col ${colorTheme} ${getStatusColor(appt.status)} pb-6 z-20 hover:scale-[1.02]`}
-                                                        // X Position: 5rem (80px) for time col + (doctorIndex * 16rem/256px for doc cols) + tiny margin
+                                                        className={`absolute rounded-md border p-2 text-xs overflow-hidden shadow-lg hover:z-50 hover:brightness-110 transition-all backdrop-blur-md flex flex-col pb-6 z-20 hover:scale-[1.02] ${cardStyle} ${appt.isGoogleCalendarEvent ? 'cursor-default' : 'cursor-pointer'}`}
                                                         style={{
                                                             top: `${yOffset}px`,
                                                             height: `${height}px`,
@@ -330,36 +474,47 @@ export const Agenda: React.FC = () => {
                                                             width: `calc(16rem - 8px)`
                                                         }}
                                                     >
-                                                        <div className="font-bold truncate">{appt.patientName}</div>
-                                                        <div className="text-[10px] opacity-80 truncate">{appt.procedure}</div>
+                                                        {/* Doctor color accent bar */}
+                                                        <div className={`absolute top-0 left-0 w-1 h-full rounded-l-md ${doctor.colorTheme?.split(' ')[0] || 'bg-white/30'}`}></div>
 
-                                                        <div className="text-[9px] opacity-60 flex items-center justify-between mt-1">
+                                                        <div className="flex items-center gap-1 pl-1.5">
+                                                            {appt.isGoogleCalendarEvent && (
+                                                                <svg viewBox="0 0 24 24" className="w-3 h-3 shrink-0 fill-blue-300 opacity-80">
+                                                                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                                                                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                                                                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" />
+                                                                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+                                                                </svg>
+                                                            )}
+                                                            <div className="font-bold truncate">{appt.patientName}</div>
+                                                        </div>
+                                                        <div className="text-[10px] opacity-80 truncate pl-1.5">{appt.procedure}</div>
+                                                        <div className="text-[9px] opacity-60 flex items-center justify-between mt-1 pl-1.5">
                                                             <span>{appt.startTime} ({appt.durationMinutes}m)</span>
                                                             {(appt.status === 'arrived' || appt.status === 'completed') && <CheckCircle2 className="w-3 h-3" />}
                                                         </div>
 
-                                                        {/* BOTTOM RIBBON */}
+                                                        {/* BOTTOM RIBBON — status selector */}
                                                         <div
-                                                            className={`absolute bottom-0 left-0 w-full flex items-center justify-between px-1 py-0.5 text-[9px] font-bold ${appt.aiNote && isOptimized ? 'bg-premium text-cobalt' : 'bg-black/20 text-white'}`}
+                                                            className="absolute bottom-0 left-0 w-full flex items-center justify-between px-1 py-0.5 text-[9px] font-bold bg-black/20"
                                                             onClick={(e) => e.stopPropagation()}
                                                         >
                                                             {appt.aiNote && isOptimized ? (
-                                                                <div className="flex items-center gap-1 truncate max-w-[50%] pointer-events-none">
+                                                                <div className="flex items-center gap-1 truncate max-w-[50%] pointer-events-none text-premium">
                                                                     <Sparkles className="w-2 h-2 shrink-0" />
                                                                     <span className="truncate">{appt.aiNote}</span>
                                                                 </div>
-                                                            ) : <div className="max-w-[10%]"></div>}
-
+                                                            ) : <div />}
                                                             <select
                                                                 title="Estado de la cita"
                                                                 aria-label="Estado de la cita"
                                                                 value={appt.status}
                                                                 onChange={(e) => handleStatusChange(e, appt.id)}
-                                                                className={`bg-transparent outline-none appearance-none cursor-pointer hover:opacity-80 transition-opacity text-right ${appt.aiNote && isOptimized ? 'text-cobalt' : 'text-white'}`}
+                                                                className="bg-transparent outline-none appearance-none cursor-pointer hover:opacity-80 transition-opacity text-right text-white"
                                                             >
                                                                 <option value="scheduled" className="text-black">Por conf.</option>
                                                                 <option value="confirmed" className="text-black">Confirmada</option>
-                                                                <option value="arrived" className="text-black">En sala</option>
+                                                                <option value="arrived"   className="text-black">En sala</option>
                                                                 <option value="completed" className="text-black">Terminada</option>
                                                                 <option value="cancelled" className="text-black">Cancelada</option>
                                                             </select>
@@ -380,7 +535,7 @@ export const Agenda: React.FC = () => {
                 )}
             </div>
 
-            {/* NEW APPOINTMENT MODAL (NUEVA CITA PREVIA) */}
+            {/* NEW APPOINTMENT MODAL */}
             <NewAppointmentModal
                 isOpen={isNewAppointmentModalOpen}
                 onClose={() => {
@@ -390,6 +545,8 @@ export const Agenda: React.FC = () => {
                 }}
                 initialTime={initialModalTime}
                 initialDoctorId={initialModalDoctorId}
+                selectedDate={new Date(currentYear, currentMonth, selectedDate)}
+                onAppointmentCreated={() => syncGoogleCalendar()}
             />
 
             {/* NEW PATIENT FORM */}
@@ -399,7 +556,7 @@ export const Agenda: React.FC = () => {
                 patientId={editPatientId}
             />
 
-            {/* PATIENT PROFILE VIEW (AI Hub & Odontogram) */}
+            {/* PATIENT PROFILE VIEW */}
             {isPatientViewOpen && (
                 <PatientProfile
                     patientId={selectedPatientId ?? ''}
@@ -407,6 +564,13 @@ export const Agenda: React.FC = () => {
                     onClose={() => setIsPatientViewOpen(false)}
                 />
             )}
+
+            {/* GOOGLE CALENDAR SYNC MODAL */}
+            <GoogleCalendarSyncModal
+                isOpen={isGcalModalOpen}
+                onClose={() => setIsGcalModalOpen(false)}
+                onSyncComplete={() => syncGoogleCalendar()}
+            />
 
         </motion.div>
     );

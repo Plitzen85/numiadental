@@ -2,15 +2,20 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Search, ChevronDown, Check } from 'lucide-react';
 import { useMarket, isDoctor } from '../context/MarketContext';
+import { isConnected, createCalendarEvent } from '../lib/googleCalendar';
 
 interface NewAppointmentModalProps {
     isOpen: boolean;
     onClose: () => void;
     initialTime?: string;
     initialDoctorId?: string;
+    selectedDate?: Date;           // date shown in the agenda grid
+    onAppointmentCreated?: () => void; // triggers a Google Calendar re-fetch
 }
 
-export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen, onClose, initialTime, initialDoctorId }) => {
+export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
+    isOpen, onClose, initialTime, initialDoctorId, selectedDate, onAppointmentCreated,
+}) => {
     const { clinicProfile, appointments, setAppointments, patients } = useMarket();
     const doctors = (clinicProfile?.staff || []).filter(isDoctor);
 
@@ -73,21 +78,19 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen
         onClose();
     };
 
-    const handleSave = () => {
+    const handleSave = async () => {
         if (!selectedDoctor || !modalFormState["datetime_start"]) {
             alert('Por favor selecciona un médico y una fecha de inicio.');
             return;
         }
 
-        // Parse date and time from datetime-local input
         const startDt = new Date(modalFormState["datetime_start"]);
         const timeString = `${startDt.getHours().toString().padStart(2, '0')}:${startDt.getMinutes().toString().padStart(2, '0')}`;
-
-        const duration = 30; // Default duration since we removed the end time picker
+        const duration = 30;
 
         const searchInput = modalFormState["search"] || 'Paciente Nuevo';
         let patientName = searchInput;
-        // Match with a patient if it exists in Context
+        let patientEmail: string | undefined;
         if (patients && patients.length > 0) {
             const foundPatient = patients.find(p =>
                 p.nombres.toLowerCase().includes(searchInput.toLowerCase()) ||
@@ -95,20 +98,41 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen
             );
             if (foundPatient) {
                 patientName = `${foundPatient.nombres} ${foundPatient.apellidos}`;
+                patientEmail = foundPatient.email || undefined;
             }
+        }
+
+        const procedure = selectedTreatments.length > 0 ? selectedTreatments.join(', ') : 'Consulta General';
+
+        // Push to Google Calendar if the doctor is connected
+        let gcalEventId: string | undefined;
+        if (isConnected(selectedDoctor)) {
+            const eventDate = selectedDate ?? startDt;
+            const gcalId = await createCalendarEvent({
+                doctorId: selectedDoctor,
+                title: `${patientName} — ${procedure}`,
+                startTime: timeString,
+                durationMinutes: duration,
+                date: eventDate,
+                description: modalFormState["textarea_1"] || modalFormState["textarea_2"] || undefined,
+                patientEmail,
+            });
+            if (gcalId) gcalEventId = gcalId;
         }
 
         const newAppt = {
             id: Date.now().toString(),
-            patientName: patientName,
-            procedure: selectedTreatments.length > 0 ? selectedTreatments.join(', ') : 'Consulta General',
+            patientName,
+            procedure,
             doctorId: selectedDoctor,
             startTime: timeString,
             durationMinutes: duration,
             status: 'scheduled' as const,
+            googleCalendarEventId: gcalEventId,
         };
 
         setAppointments([...appointments, newAppt]);
+        onAppointmentCreated?.();
         handleClose();
     };
 
@@ -164,8 +188,11 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({ isOpen
                                     </div>
                                 </div>
                                 {selectedDoctor && (
-                                    <div className="text-[10px] text-emerald-600 font-bold mb-4 flex items-center gap-1 bg-emerald-50 px-2 py-1 rounded w-fit">
-                                        <Check className="w-3 h-3" /> Disponibilidad sincronizada con G-Calendar de Dr/a. {doctors.find(d => d.id === selectedDoctor)?.nombres.split(' ')[0]}
+                                    <div className={`text-[10px] font-bold mb-4 flex items-center gap-1 px-2 py-1 rounded w-fit ${isConnected(selectedDoctor) ? 'text-emerald-600 bg-emerald-50' : 'text-gray-400 bg-gray-100'}`}>
+                                        <Check className="w-3 h-3" />
+                                        {isConnected(selectedDoctor)
+                                            ? `G-Calendar conectado · Dr/a. ${doctors.find(d => d.id === selectedDoctor)?.nombres.split(' ')[0]}`
+                                            : 'Google Calendar no conectado para este médico'}
                                     </div>
                                 )}
 

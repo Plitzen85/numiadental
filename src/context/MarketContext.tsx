@@ -1,6 +1,6 @@
 import React, { useContext, useState, ReactNode, useEffect, useRef, useCallback } from 'react';
 
-import { generateMockAppointments, AppointmentType } from '../lib/agendaLogic';
+import { AppointmentType } from '../lib/agendaLogic';
 import { loadClinicProfile, saveClinicProfile, supabase, CLINIC_ID } from '../lib/supabase';
 
 // Define the shape of our data
@@ -85,6 +85,7 @@ export interface StaffMember {
     staffType: 'admin' | 'doctor' | 'external_doctor';
     modulePermissions?: ModulePermissions;
     isMasterAdmin?: boolean; // Unique role with total access
+    googleCalendarConnected?: boolean; // true once doctor has authorized Google Calendar
 }
 
 /** True if staff member can be assigned as treating doctor */
@@ -230,7 +231,9 @@ export const MarketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     const [hasSyncedFromCloud, setHasSyncedFromCloud] = useState<boolean>(false);
 
     // Global States
-    const [appointments, setAppointments] = useState<AppointmentType[]>(generateMockAppointments());
+    // Start empty — real data comes from Google Calendar sync.
+    // Mock data is only injected by the AI Scheduler button for demo purposes.
+    const [appointments, setAppointments] = useState<AppointmentType[]>([]);
     const [financeStats, setFinanceStats] = useState<FinanceStats>({
         weeklyIncome: 65000,
         weeklyGoal: 80000,
