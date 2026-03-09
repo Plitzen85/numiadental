@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { motion } from 'framer-motion';
 import { Calendar as CalendarIcon, UserPlus, Sparkles, RefreshCcw, CheckCircle2, Bot, Wifi } from 'lucide-react';
 import { useMarket, isDoctor } from '../context/MarketContext';
-import { AppointmentType, generateMockAppointments, getActiveUnitsAtTime, parseTimeToMinutes } from '../lib/agendaLogic';
+import { AppointmentType, getActiveUnitsAtTime, parseTimeToMinutes } from '../lib/agendaLogic';
 import {
     fetchCalendarEvents,
     gcalEventToAppointment,
@@ -284,7 +284,6 @@ export const Agenda: React.FC = () => {
                                             onClick={() => {
                                                 setSelectedDate(i + 1);
                                                 setIsOptimized(false);
-                                                setAppointments(generateMockAppointments());
                                             }}
                                             className={`p-2 rounded-lg hover:bg-white/10 transition-colors ${i + 1 === selectedDate ? 'bg-electric text-cobalt' : 'text-clinical/80'} ${i + 1 === today.getDate() && i + 1 !== selectedDate ? 'border border-electric/30' : ''}`}>
                                             {i + 1}
