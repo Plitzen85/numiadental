@@ -10,6 +10,8 @@ export interface AppointmentType {
     aiNote?: string;
     googleCalendarEventId?: string;
     isGoogleCalendarEvent?: boolean;
+    linkedPatientId?: string;    // patientId matched from our DB (via email)
+    attendeeEmail?: string;      // email from gcal event attendees
 }
 
 const MAX_CLINIC_UNITS = 3;

@@ -350,6 +350,8 @@ export function gcalEventToAppointment(event: GCalEvent, doctorId: string): Appo
         `${start.getHours().toString().padStart(2, '0')}:` +
         `${start.getMinutes().toString().padStart(2, '0')}`;
 
+    const attendeeEmail = event.attendees?.[0]?.email;
+
     return {
         id: `gcal-${event.id}`,
         patientName: event.summary ?? 'Evento de Google Calendar',
@@ -360,5 +362,6 @@ export function gcalEventToAppointment(event: GCalEvent, doctorId: string): Appo
         status: 'confirmed',
         googleCalendarEventId: event.id,
         isGoogleCalendarEvent: true,
+        attendeeEmail,
     };
 }

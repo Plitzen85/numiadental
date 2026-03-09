@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Calendar as CalendarIcon, UserPlus, Sparkles, RefreshCcw, CheckCircle2, Bot, Wifi } from 'lucide-react';
-import { useMarket, isDoctor } from '../context/MarketContext';
+import { useMarket, isDoctor, Patient } from '../context/MarketContext';
 import { AppointmentType, getActiveUnitsAtTime, parseTimeToMinutes } from '../lib/agendaLogic';
 import {
     fetchCalendarEvents,
@@ -20,7 +20,11 @@ import { GoogleCalendarSyncModal } from '../components/GoogleCalendarSyncModal';
 const POLL_INTERVAL_MS = 30_000; // 30 seconds
 
 export const Agenda: React.FC = () => {
-    const { clinicProfile, appointments, setAppointments, setFinanceStats, patients } = useMarket();
+    const { clinicProfile, appointments, setAppointments, setFinanceStats, patients, setPatients } = useMarket();
+
+    // Keep a ref so syncGoogleCalendar always reads the latest patients list
+    const patientsRef = useRef(patients);
+    useEffect(() => { patientsRef.current = patients; }, [patients]);
     const doctors = (clinicProfile?.staff || []).filter(isDoctor);
 
     // --- Google Calendar state ---
@@ -87,11 +91,64 @@ export const Agenda: React.FC = () => {
             )
         );
 
-        setGcalEvents(results.flat());
+        // Match gcal attendee emails → existing patients, or auto-create a minimal record
+        const currentPatients = patientsRef.current;
+        const newPatients: Patient[] = [];
+        let nextNum = Math.max(0, ...currentPatients.map(p => p.numeroPaciente ?? 0)) + 1;
+
+        const enriched = results.flat().map(appt => {
+            if (!appt.attendeeEmail) return appt;
+            const email = appt.attendeeEmail.toLowerCase();
+
+            // Search in existing + newly queued patients
+            const found = [...currentPatients, ...newPatients].find(
+                p => p.email?.toLowerCase() === email
+            );
+            if (found) return { ...appt, linkedPatientId: found.id };
+
+            // Auto-create minimal patient from gcal attendee data
+            const titlePart = (appt.patientName || '').split(' — ')[0].trim();
+            const nameParts = titlePart.split(' ');
+            const nombres = nameParts[0] || email.split('@')[0];
+            const apellidos = nameParts.slice(1).join(' ') || '';
+            const num = nextNum++;
+            const newPat: Patient = {
+                id: `gcal-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                numeroPaciente: num,
+                folio: String(num).padStart(6, '0'),
+                nombres,
+                apellidos,
+                email,
+                telefono: '',
+                genero: '',
+                estadoCivil: '',
+                fechaNacimiento: '',
+                tipoPaciente: 'Nuevo',
+                alertaMedica: '',
+                alertaAdministrativa: '',
+                domicilio: '',
+                ciudad: '',
+                pais: '',
+                saldo: 0,
+                ultimaVisita: new Date().toISOString().split('T')[0],
+            };
+            newPatients.push(newPat);
+            return { ...appt, linkedPatientId: newPat.id };
+        });
+
+        if (newPatients.length > 0) {
+            setPatients(prev => {
+                const existingEmails = new Set(prev.map(p => p.email?.toLowerCase()).filter(Boolean));
+                const truly_new = newPatients.filter(np => !existingEmails.has(np.email?.toLowerCase()));
+                return truly_new.length > 0 ? [...prev, ...truly_new] : prev;
+            });
+        }
+
+        setGcalEvents(enriched);
         setLastSynced(new Date());
         setIsSyncing(false);
         setConnectedCount(getConnectedDoctorIds().length);
-    }, [selectedDate, currentMonth, currentYear]);
+    }, [selectedDate, currentMonth, currentYear, setPatients]);
 
     // -----------------------------------------------------------------------
     // On mount: attempt silent reconnect for all doctors, then start polling
