@@ -11,10 +11,11 @@ interface NewAppointmentModalProps {
     initialDoctorId?: string;
     selectedDate?: Date;           // date shown in the agenda grid
     onAppointmentCreated?: () => void; // triggers a Google Calendar re-fetch
+    onCreatePatient?: (name: string) => void; // called when saving without a registered patient
 }
 
 export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
-    isOpen, onClose, initialTime, initialDoctorId, selectedDate, onAppointmentCreated,
+    isOpen, onClose, initialTime, initialDoctorId, selectedDate, onAppointmentCreated, onCreatePatient,
 }) => {
     const { clinicProfile, appointments, setAppointments, patients } = useMarket();
     const doctors = (clinicProfile?.staff || []).filter(isDoctor);
@@ -37,6 +38,11 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
             }
         }
     }, [isOpen, initialDoctorId, initialTime]);
+
+    // Patient search state
+    const [linkedPatientId, setLinkedPatientId] = useState<string | null>(null);
+    const [searchSuggestions, setSearchSuggestions] = useState<typeof patients>([]);
+    const [showSuggestions, setShowSuggestions] = useState(false);
 
     const [selectedTreatments, setSelectedTreatments] = useState<string[]>([]);
     const [selectedLabOrders, setSelectedLabOrders] = useState<string[]>([]);
@@ -65,11 +71,41 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
         'bg-blue-200 border-blue-300', 'bg-green-200 border-green-300', 'bg-lime-200 border-lime-300'
     ];
 
+    const handleSearchInput = (val: string) => {
+        handleModalInput('search', val);
+        setLinkedPatientId(null);
+        if (val.trim().length >= 1) {
+            const q = val.toLowerCase();
+            const matches = patients.filter(p =>
+                p.nombres.toLowerCase().includes(q) ||
+                p.apellidos.toLowerCase().includes(q) ||
+                `${p.nombres} ${p.apellidos}`.toLowerCase().includes(q) ||
+                p.folio.includes(q) ||
+                (p.telefono && p.telefono.includes(q))
+            ).slice(0, 8);
+            setSearchSuggestions(matches);
+            setShowSuggestions(true);
+        } else {
+            setSearchSuggestions([]);
+            setShowSuggestions(false);
+        }
+    };
+
+    const handleSelectPatient = (p: typeof patients[0]) => {
+        handleModalInput('search', `${p.nombres} ${p.apellidos}`);
+        setLinkedPatientId(p.id);
+        setSearchSuggestions([]);
+        setShowSuggestions(false);
+    };
+
     const handleClose = () => {
         setModalFormState({});
         setSelectedTreatments([]);
         setSelectedLabOrders([]);
         setSelectedColor('');
+        setLinkedPatientId(null);
+        setSearchSuggestions([]);
+        setShowSuggestions(false);
         setIsTreatmentsOpen(false);
         setIsLabOrdersOpen(false);
         setIsDoctorSelectOpen(false);
@@ -88,18 +124,15 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
         const timeString = `${startDt.getHours().toString().padStart(2, '0')}:${startDt.getMinutes().toString().padStart(2, '0')}`;
         const duration = 30;
 
-        const searchInput = modalFormState["search"] || 'Paciente Nuevo';
-        let patientName = searchInput;
+        const searchInput = (modalFormState["search"] || '').trim();
+        let patientName = searchInput || 'Paciente Nuevo';
         let patientEmail: string | undefined;
-        if (patients && patients.length > 0) {
-            const foundPatient = patients.find(p =>
-                p.nombres.toLowerCase().includes(searchInput.toLowerCase()) ||
-                p.folio.includes(searchInput)
-            );
-            if (foundPatient) {
-                patientName = `${foundPatient.nombres} ${foundPatient.apellidos}`;
-                patientEmail = foundPatient.email || undefined;
-            }
+
+        // Prefer explicitly linked patient (selected from dropdown)
+        const linkedPatient = linkedPatientId ? patients.find(p => p.id === linkedPatientId) : null;
+        if (linkedPatient) {
+            patientName = `${linkedPatient.nombres} ${linkedPatient.apellidos}`;
+            patientEmail = linkedPatient.email || undefined;
         }
 
         const procedure = selectedTreatments.length > 0 ? selectedTreatments.join(', ') : 'Consulta General';
@@ -133,7 +166,13 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
 
         setAppointments([...appointments, newAppt]);
         onAppointmentCreated?.();
+
+        // If no patient was linked to a CRM record, prompt to create one
+        const isPatientRegistered = Boolean(linkedPatientId);
         handleClose();
+        if (!isPatientRegistered && onCreatePatient) {
+            onCreatePatient(patientName !== 'Paciente Nuevo' ? patientName : '');
+        }
     };
 
     return (
@@ -165,15 +204,46 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
                             {/* LEFT PANE - FORM */}
                             <div className="w-full lg:w-[45%] p-6 overflow-y-auto border-r border-gray-100 space-y-4">
 
-                                {/* Patient Search */}
+                                {/* Patient Search with live suggestions */}
                                 <div className="relative">
-                                    <Search className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                                    <input title="Campo" type="text"
+                                    <Search className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                                    {linkedPatientId && (
+                                        <div className="absolute left-4 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-green-500"></div>
+                                    )}
+                                    <input
+                                        title="Buscar paciente"
+                                        type="text"
                                         value={modalFormState["search"] || ""}
-                                        onChange={e => handleModalInput("search", e.target.value)}
-                                        placeholder="Nombre, DNI, teléfono"
-                                        className="w-full pl-4 pr-10 py-3 text-gray-800 rounded-lg border border-gray-200 focus:outline-none focus:border-electric focus:ring-1 focus:ring-electric transition-all text-sm"
+                                        onChange={e => handleSearchInput(e.target.value)}
+                                        onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                                        onFocus={() => searchSuggestions.length > 0 && setShowSuggestions(true)}
+                                        placeholder="Nombre, folio o teléfono del paciente"
+                                        className={`w-full py-3 pr-10 text-gray-800 rounded-lg border focus:outline-none focus:border-electric focus:ring-1 focus:ring-electric transition-all text-sm ${linkedPatientId ? 'pl-8 border-green-400 bg-green-50' : 'pl-4 border-gray-200'}`}
                                     />
+                                    {showSuggestions && searchSuggestions.length > 0 && (
+                                        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-30 max-h-52 overflow-y-auto">
+                                            {searchSuggestions.map(p => (
+                                                <div
+                                                    key={p.id}
+                                                    onMouseDown={() => handleSelectPatient(p)}
+                                                    className="px-4 py-2.5 hover:bg-green-50 cursor-pointer flex items-center justify-between border-b border-gray-100 last:border-0"
+                                                >
+                                                    <div>
+                                                        <div className="text-sm font-semibold text-gray-800">{p.nombres} {p.apellidos}</div>
+                                                        <div className="text-xs text-gray-400">{p.folio} · {p.telefono}</div>
+                                                    </div>
+                                                    <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded">{p.tipoPaciente}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    {showSuggestions && searchSuggestions.length === 0 && (modalFormState["search"] || '').length >= 2 && (
+                                        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-30">
+                                            <div className="px-4 py-3 text-sm text-gray-400 italic">
+                                                Paciente no registrado — se creará su perfil al guardar
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Dates */}

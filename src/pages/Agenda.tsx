@@ -40,6 +40,7 @@ export const Agenda: React.FC = () => {
     const [isPatientViewOpen, setIsPatientViewOpen] = useState(false);
     const [selectedPatientId, setSelectedPatientId] = useState<string | undefined>(undefined);
     const [editPatientId, setEditPatientId] = useState<string | undefined>(undefined);
+    const [newPatientInitialName, setNewPatientInitialName] = useState<string | undefined>(undefined);
     const [activeTab, setActiveTab] = useState<'calendario' | 'pacientes'>('calendario');
 
     const today = new Date();
@@ -427,15 +428,15 @@ export const Agenda: React.FC = () => {
                                                 const height = (appt.durationMinutes / TIME_INTERVAL_MINS) * 48;
                                                 const doctor = doctors[doctorIndex];
 
-                                                // Status-based card background (overrides doctor color)
-                                                // Google Calendar events always blue
+                                                // Status-based card background — status takes priority; gcal-blue only for unmodified (scheduled) gcal events
                                                 const getCardStyle = (status: string, isGcal: boolean) => {
-                                                    if (isGcal) return 'bg-blue-500/20 border-blue-400/40 text-blue-100';
                                                     if (status === 'cancelled') return 'bg-red-500/20 border-red-500/40 text-red-100';
                                                     if (status === 'completed') return 'bg-cyan-500/20 border-cyan-500/40 text-cyan-100';
                                                     if (status === 'arrived')   return 'bg-purple-500/20 border-purple-500/40 text-purple-100';
                                                     if (status === 'confirmed') return 'bg-green-500/20 border-green-500/40 text-green-100';
-                                                    return 'bg-gray-500/15 border-gray-400/30 text-gray-100'; // scheduled
+                                                    // scheduled: gcal events stay blue, local events gray
+                                                    if (isGcal) return 'bg-blue-500/20 border-blue-400/40 text-blue-100';
+                                                    return 'bg-gray-500/15 border-gray-400/30 text-gray-100';
                                                 };
 
                                                 // Status change: works for both local and gcal events.
@@ -467,12 +468,21 @@ export const Agenda: React.FC = () => {
                                                     <div
                                                         key={appt.id}
                                                         onClick={() => {
-                                                            if (!appt.isGoogleCalendarEvent) {
-                                                                const pSearch = patients.find(p => p.nombres.includes(appt.patientName.split(' ')[0]) || appt.patientName.includes(p.nombres));
-                                                                handleOpenProfile(pSearch?.id);
+                                                            const firstName = appt.patientName.split(' ')[0].toLowerCase();
+                                                            const found = patients.find(p =>
+                                                                p.nombres.toLowerCase().includes(firstName) ||
+                                                                appt.patientName.toLowerCase().includes(p.nombres.toLowerCase())
+                                                            );
+                                                            if (found) {
+                                                                setSelectedPatientId(found.id);
+                                                                setIsPatientViewOpen(true);
+                                                            } else {
+                                                                setEditPatientId(undefined);
+                                                                setNewPatientInitialName(appt.patientName);
+                                                                setIsPatientFormOpen(true);
                                                             }
                                                         }}
-                                                        className={`absolute rounded-md border p-2 text-xs overflow-hidden shadow-lg hover:z-50 hover:brightness-110 transition-all backdrop-blur-md flex flex-col pb-6 z-20 hover:scale-[1.02] ${cardStyle} ${appt.isGoogleCalendarEvent ? 'cursor-default' : 'cursor-pointer'}`}
+                                                        className={`absolute rounded-md border p-2 text-xs overflow-hidden shadow-lg hover:z-50 hover:brightness-110 transition-all backdrop-blur-md flex flex-col pb-6 z-20 hover:scale-[1.02] cursor-pointer ${cardStyle}`}
                                                         style={{
                                                             top: `${yOffset}px`,
                                                             height: `${height}px`,
@@ -553,13 +563,19 @@ export const Agenda: React.FC = () => {
                 initialDoctorId={initialModalDoctorId}
                 selectedDate={new Date(currentYear, currentMonth, selectedDate)}
                 onAppointmentCreated={() => syncGoogleCalendar()}
+                onCreatePatient={(name) => {
+                    setEditPatientId(undefined);
+                    setNewPatientInitialName(name || undefined);
+                    setIsPatientFormOpen(true);
+                }}
             />
 
             {/* NEW PATIENT FORM */}
             <PatientProfileForm
                 isOpen={isPatientFormOpen}
-                onClose={() => { setIsPatientFormOpen(false); setEditPatientId(undefined); }}
+                onClose={() => { setIsPatientFormOpen(false); setEditPatientId(undefined); setNewPatientInitialName(undefined); }}
                 patientId={editPatientId}
+                initialName={newPatientInitialName}
             />
 
             {/* PATIENT PROFILE VIEW */}

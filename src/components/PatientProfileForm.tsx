@@ -7,7 +7,7 @@ import { useMarket } from '../context/MarketContext';
 import { printPatientRecord, getOrCreateToken } from '../utils/patientPrint';
 import { loadPatientRecord, savePatientRecord, PatientMedicalHistory } from '../lib/supabase';
 
-export const PatientProfileForm: React.FC<{ isOpen: boolean; onClose: () => void; patientId?: string }> = ({ isOpen, onClose, patientId }) => {
+export const PatientProfileForm: React.FC<{ isOpen: boolean; onClose: () => void; patientId?: string; initialName?: string }> = ({ isOpen, onClose, patientId, initialName }) => {
     const { patients, setPatients, clinicProfile } = useMarket();
     const [activeTab, setActiveTab] = useState<'personales' | 'clinico'>('personales');
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -107,10 +107,11 @@ export const PatientProfileForm: React.FC<{ isOpen: boolean; onClose: () => void
             setPhoto(null);
             setActiveTab('personales');
         } else {
-            setFormState({});
+            // New patient — optionally pre-fill name from appointment
+            setFormState(initialName ? { text_3: initialName } : {});
             setPhoto(null);
         }
-    }, [isOpen, patientId, patients]);
+    }, [isOpen, patientId, patients, initialName]);
 
     const handleSave = () => {
         const dateNow = new Date().toISOString().split('T')[0];
