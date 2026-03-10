@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { AIClinicalViewer } from './AIClinicalViewer';
+import { AIAssistant } from './patient/AIAssistant';
 import { HybridChart } from './patient/HybridChart';
 import { VisitRecord } from './patient/VisitRecord';
 import { TreatmentPipeline } from './patient/TreatmentPipeline';
@@ -52,6 +53,7 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patie
 
     const [activeTab, setActiveTab] = useState<TabId>(initialTab ?? 'historial');
     const [isAIViewerOpen, setIsAIViewerOpen] = useState(false);
+    const [isAIAssistantOpen, setIsAIAssistantOpen] = useState(false);
     const [linkCopied, setLinkCopied] = useState(false);
 
     const handlePrint = () => {
@@ -271,7 +273,7 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patie
                             <Link2 className="w-4 h-4" />
                             <span className="hidden sm:inline">{linkCopied ? '¡Copiado!' : 'Link'}</span>
                         </button>
-                        <button onClick={() => setIsAIViewerOpen(true)} className="bg-electric/20 text-electric hover:bg-electric/30 border border-electric/30 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors shadow-[0_0_15px_rgba(0,212,255,0.2)]">
+                        <button type="button" onClick={() => setIsAIAssistantOpen(true)} className="bg-electric/20 text-electric hover:bg-electric/30 border border-electric/30 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors shadow-[0_0_15px_rgba(0,212,255,0.2)]">
                             <Sparkles className="w-4 h-4" /> NÜMIA AI
                         </button>
                         <button onClick={onClose} className="text-clinical/60 hover:text-white bg-white/5 hover:bg-white/10 p-2 rounded-xl transition-colors">Cerrar</button>
@@ -556,6 +558,24 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patie
             </motion.div>
 
             <AIClinicalViewer isOpen={isAIViewerOpen} onClose={() => setIsAIViewerOpen(false)} patientName={patientName} />
+            <AIAssistant
+                isOpen={isAIAssistantOpen}
+                onClose={() => setIsAIAssistantOpen(false)}
+                patientName={patientName}
+                patientAge={patient?.fechaNacimiento ? Math.floor((Date.now() - new Date(patient.fechaNacimiento).getTime()) / (365.25 * 24 * 60 * 60 * 1000)) : undefined}
+                patientRecord={{ medicalHistory, files, visits, treatmentPlan, payments, notes: [] }}
+                medicalHistory={{
+                    alergias: medicalHistory.alergias ? 'Sí' : undefined,
+                    medicamentos: medicalHistory.medicamentos || undefined,
+                    enfermedades: [
+                        medicalHistory.diabetes && 'Diabetes',
+                        medicalHistory.hipertension && 'Hipertensión',
+                        medicalHistory.cardiopatia && 'Cardiopatía',
+                        medicalHistory.embarazo && 'Embarazo',
+                    ].filter(Boolean).join(', ') || undefined,
+                    antecedentes: medicalHistory.notas || undefined,
+                }}
+            />
         </div>
     );
 };
