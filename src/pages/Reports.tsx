@@ -546,6 +546,53 @@ export const Reports: React.FC = () => {
                 </div>
             )}
 
+            {/* ── Pacientes sin cita (>6 meses) ────────── */}
+            {!loading && activeTab === 'pacientes' && (() => {
+                const sixMonthsAgo = new Date();
+                sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+                const inactivos = patients
+                    .filter(p => !p.ultimaVisita || new Date(p.ultimaVisita) < sixMonthsAgo)
+                    .sort((a, b) => (a.ultimaVisita ?? '').localeCompare(b.ultimaVisita ?? ''));
+                if (inactivos.length === 0) return null;
+                return (
+                    <div className="mt-6 space-y-3">
+                        <h3 className="text-xs font-bold text-orange-400 uppercase tracking-widest flex items-center gap-2">
+                            <Users className="w-4 h-4" /> Pacientes inactivos — Sin cita en +6 meses ({inactivos.length})
+                        </h3>
+                        <div className="bg-white/3 border border-white/10 rounded-2xl overflow-hidden">
+                            <table className="w-full text-left text-sm">
+                                <thead>
+                                    <tr className="bg-white/5 text-[10px] uppercase text-clinical/40 tracking-wide">
+                                        <th className="px-5 py-3">Paciente</th>
+                                        <th className="px-5 py-3">Teléfono</th>
+                                        <th className="px-5 py-3">Última visita</th>
+                                        <th className="px-5 py-3 text-center">Días sin cita</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {inactivos.slice(0, 30).map(p => {
+                                        const last = p.ultimaVisita ? new Date(p.ultimaVisita) : null;
+                                        const dias = last ? Math.floor((Date.now() - last.getTime()) / (1000 * 60 * 60 * 24)) : null;
+                                        return (
+                                            <tr key={p.id} className="border-t border-white/5 hover:bg-white/3 transition-colors">
+                                                <td className="px-5 py-3 font-bold text-white">{p.nombres} {p.apellidos}</td>
+                                                <td className="px-5 py-3 text-clinical/50">{p.telefono ?? '—'}</td>
+                                                <td className="px-5 py-3 text-clinical/50">{last ? last.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Sin registro'}</td>
+                                                <td className="px-5 py-3 text-center">
+                                                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full border text-orange-400 border-orange-500/30 bg-orange-500/5">
+                                                        {dias !== null ? `${dias} días` : 'N/A'}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                );
+            })()}
+
             {/* ══════════════ TAB: SERVICIOS ══════════════ */}
             {!loading && activeTab === 'servicios' && (
                 <div>

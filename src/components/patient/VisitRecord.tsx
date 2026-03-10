@@ -87,6 +87,22 @@ export const VisitRecord: React.FC<VisitRecordProps> = ({
         update({ prescription: { ...rx, medications: [...rx.medications, med] } });
     };
 
+    const addTemplate = (template: PrescriptionMedication) => {
+        const rx = local.prescription ?? { id: `rx-${Date.now()}`, medications: [], freeText: '' };
+        update({ prescription: { ...rx, medications: [...rx.medications, { ...template }] } });
+    };
+
+    const RX_TEMPLATES: PrescriptionMedication[] = [
+        { name: 'Ibuprofeno', dose: '600 mg', frequency: 'Cada 8 hrs', duration: '3–5 días' },
+        { name: 'Amoxicilina', dose: '500 mg', frequency: 'Cada 8 hrs', duration: '7 días' },
+        { name: 'Metronidazol', dose: '500 mg', frequency: 'Cada 8 hrs', duration: '7 días' },
+        { name: 'Ketorolaco', dose: '10 mg', frequency: 'Cada 6 hrs', duration: '3 días' },
+        { name: 'Clindamicina', dose: '300 mg', frequency: 'Cada 6 hrs', duration: '7 días' },
+        { name: 'Diclofenaco', dose: '75 mg', frequency: 'Cada 12 hrs', duration: '3 días' },
+        { name: 'Paracetamol', dose: '500 mg', frequency: 'Cada 6 hrs', duration: 'Al dolor' },
+        { name: 'Nimesulida', dose: '100 mg', frequency: 'Cada 12 hrs', duration: '5 días' },
+    ];
+
     const updateMedication = (idx: number, patch: Partial<PrescriptionMedication>) => {
         if (!local.prescription) return;
         const meds = local.prescription.medications.map((m, i) => i === idx ? { ...m, ...patch } : m);
@@ -220,6 +236,19 @@ export const VisitRecord: React.FC<VisitRecordProps> = ({
                             <FileText className="w-32 h-32 text-black" />
                         </div>
                         <p className="font-syne font-black text-black text-2xl border-b border-black/10 pb-3 mb-4">℞</p>
+
+                        {/* Quick templates */}
+                        <div className="mb-3">
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Plantillas rápidas</p>
+                            <div className="flex flex-wrap gap-1.5">
+                                {RX_TEMPLATES.map(t => (
+                                    <button key={t.name} type="button" onClick={() => addTemplate(t)}
+                                        className="text-[10px] font-bold px-2.5 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-full border border-gray-200 transition-colors">
+                                        + {t.name}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
 
                         <div className="space-y-3 mb-4">
                             {(local.prescription?.medications ?? []).map((med, idx) => (

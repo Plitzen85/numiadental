@@ -1,5 +1,5 @@
 import { Patient } from '../context/MarketContext';
-import { PatientMedicalHistory, TreatmentPlan, PatientVisit } from '../lib/supabase';
+import { PatientMedicalHistory, TreatmentPlan, PatientVisit, PatientPayment } from '../lib/supabase';
 
 // ─── Branding helpers ─────────────────────────────────────────────────────────
 
@@ -447,6 +447,80 @@ export function printConsentDocument(
     setTimeout(() => { win.print(); }, 600);
 }
 
+// ─── Payment receipt print ───────────────────────────────────────────────────
+
+const METODO_LABELS_PRINT: Record<string, string> = {
+    efectivo: 'Efectivo', tarjeta_credito: 'Tarjeta Crédito',
+    tarjeta_debito: 'Tarjeta Débito', transferencia: 'Transferencia Bancaria', cripto: 'Criptomoneda',
+};
+
+export function printPaymentReceipt(
+    patientName: string,
+    payment: PatientPayment,
+    clinicName = 'Nümia Dental',
+) {
+    const branding = getClinicBranding();
+    const brandColor = branding?.colorPrimario ?? '#00d4ff';
+    const fmt = (d: string) => new Date(d).toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' });
+    const fmtMXN = (n: number) => `$${n.toLocaleString('es-MX', { minimumFractionDigits: 2 })}`;
+
+    const recHtml = `<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8">
+<title>Comprobante ${payment.receiptNumber ?? ''}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Helvetica Neue',Arial,sans-serif;font-size:12px;color:#1a1a2e;background:#fff}
+.page{max-width:480px;margin:0 auto;padding:40px 32px}
+.header{border-bottom:3px solid ${brandColor};padding-bottom:18px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:flex-start}
+.logo{font-size:22px;font-weight:900;letter-spacing:3px;color:${brandColor}}
+.logo-sub{font-size:9px;color:#888;letter-spacing:1px;text-transform:uppercase;margin-top:2px}
+.meta{text-align:right;font-size:10px;color:#666;line-height:1.8}
+.receipt-badge{text-align:center;margin-bottom:20px}
+.receipt-num{font-size:20px;font-weight:900;color:${brandColor};letter-spacing:2px}
+.receipt-label{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#9ca3af;margin-top:2px}
+.amount-block{background:${brandColor}12;border:2px solid ${brandColor};border-radius:12px;padding:20px;text-align:center;margin:20px 0}
+.amount-label{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#6b7280;margin-bottom:6px}
+.amount-value{font-size:36px;font-weight:900;color:${brandColor}}
+.detail-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:11px}
+.detail-row:last-child{border-bottom:none}
+.detail-label{color:#9ca3af;font-weight:600}
+.detail-value{color:#111827;font-weight:700;text-align:right;max-width:60%}
+.check-icon{text-align:center;margin:20px 0;font-size:40px}
+.footer{margin-top:28px;padding-top:12px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;font-size:9px;color:#9ca3af}
+@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}@page{size:A5 portrait;margin:10mm}}
+</style></head>
+<body><div class="page">
+<div class="header">
+  <div>${buildBrandedHeader(clinicName, branding)}</div>
+  <div class="meta"><strong>COMPROBANTE DE PAGO</strong><br>${fmt(payment.date)}</div>
+</div>
+<div class="check-icon">✅</div>
+<div class="receipt-badge">
+  <div class="receipt-num">${payment.receiptNumber ?? 'SIN FOLIO'}</div>
+  <div class="receipt-label">Número de Recibo</div>
+</div>
+<div class="amount-block">
+  <div class="amount-label">Monto recibido</div>
+  <div class="amount-value">${fmtMXN(payment.monto)}</div>
+</div>
+<div class="detail-row"><span class="detail-label">Paciente</span><span class="detail-value">${patientName}</span></div>
+<div class="detail-row"><span class="detail-label">Concepto</span><span class="detail-value">${payment.concepto}</span></div>
+<div class="detail-row"><span class="detail-label">Fecha</span><span class="detail-value">${fmt(payment.date)}</span></div>
+<div class="detail-row"><span class="detail-label">Método de pago</span><span class="detail-value">${METODO_LABELS_PRINT[payment.metodoPago] ?? payment.metodoPago}${payment.cryptoType ? ` (${payment.cryptoType})` : ''}</span></div>
+<div class="detail-row"><span class="detail-label">Cuenta destino</span><span class="detail-value">${payment.cuentaDestino}</span></div>
+<div class="detail-row"><span class="detail-label">Recibió</span><span class="detail-value">${payment.receivedByName ?? '—'}</span></div>
+${payment.notes ? `<div class="detail-row"><span class="detail-label">Notas</span><span class="detail-value">${payment.notes}</span></div>` : ''}
+<div class="footer">${buildBrandedFooter(clinicName, branding)}</div>
+</div></body></html>`;
+
+    const recWin = window.open('', '_blank', 'width=600,height=700');
+    if (!recWin) { alert('Permite ventanas emergentes para imprimir.'); return; }
+    recWin.document.write(recHtml);
+    recWin.document.close();
+    recWin.focus();
+    setTimeout(() => { recWin.print(); }, 600);
+}
+
 // ─── Prescription / Receta print ─────────────────────────────────────────────
 
 export function printPrescription(
@@ -454,10 +528,7 @@ export function printPrescription(
     visit: PatientVisit,
     clinicName = 'Nümia Dental',
 ) {
-    const rx = visit.prescription;
-    if (!rx || (rx.medications.length === 0 && !rx.freeText?.trim())) {
-        alert('Esta consulta no tiene receta registrada.'); return;
-    }
+    const rx = visit.prescription ?? { id: '', medications: [], freeText: '' };
 
     const branding = getClinicBranding();
     const brandColor = branding?.colorPrimario ?? '#00d4ff';

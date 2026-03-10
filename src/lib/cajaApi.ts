@@ -12,6 +12,7 @@ export interface CajaMovimiento {
     patientId?: string;
     patientName?: string;
     paymentId?: string;         // Links to PatientPayment.id
+    categoria?: string;         // Expense category (for egresos)
     operadorId: string;
     operadorName: string;
 }

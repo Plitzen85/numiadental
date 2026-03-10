@@ -3,8 +3,9 @@ import {
     DollarSign, Plus, CreditCard, Banknote, ArrowDownToLine,
     Bitcoin, CheckCircle2, Clock, ChevronDown, ChevronUp,
     Receipt, Wallet, TrendingUp, AlertCircle, X, Loader2,
-    Lock, ChevronRight, FileText,
+    Lock, ChevronRight, FileText, Printer,
 } from 'lucide-react';
+import { printPaymentReceipt } from '../../utils/patientPrint';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useMarket } from '../../context/MarketContext';
 import { addTransaction, AccountType } from '../../lib/financeApi';
@@ -370,6 +371,13 @@ export const PatientFinanzas: React.FC<PatientFinanzasProps> = ({
                                                             <p className="text-xs text-clinical/70 leading-relaxed">{payment.notes}</p>
                                                         </div>
                                                     )}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => printPaymentReceipt(patientName, payment)}
+                                                        className="flex items-center gap-1.5 text-[10px] font-bold text-electric border border-electric/30 rounded-lg px-3 py-1.5 hover:bg-electric/10 transition-colors mt-1"
+                                                    >
+                                                        <Printer className="w-3 h-3" /> Imprimir Comprobante
+                                                    </button>
                                                 </div>
                                             </motion.div>
                                         )}

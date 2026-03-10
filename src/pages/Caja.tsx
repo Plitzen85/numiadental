@@ -82,6 +82,7 @@ export const Caja: React.FC = () => {
     const [movTipo, setMovTipo] = useState<CajaMovimiento['tipo']>('ingreso');
     const [movMonto, setMovMonto] = useState('');
     const [movConcepto, setMovConcepto] = useState('');
+    const [movCategoria, setMovCategoria] = useState('');
     const [movMetodo, setMovMetodo] = useState<MetodoPago>('efectivo');
     const [savingMov, setSavingMov] = useState(false);
 
@@ -148,6 +149,7 @@ export const Caja: React.FC = () => {
             monto: Number(movMonto),
             concepto: movConcepto || (movTipo === 'ingreso' ? 'Cobro de servicio' : movTipo === 'egreso' ? 'Gasto operativo' : 'Retiro de efectivo'),
             metodoPago: movMetodo,
+            categoria: movCategoria || undefined,
             operadorId: currentUserId,
             operadorName,
         });
@@ -156,6 +158,7 @@ export const Caja: React.FC = () => {
         setShowMovModal(false);
         setMovMonto('');
         setMovConcepto('');
+        setMovCategoria('');
         setMovTipo('ingreso');
         setMovMetodo('efectivo');
         showToast('Movimiento registrado');
@@ -396,6 +399,9 @@ export const Caja: React.FC = () => {
                                                 {mov.patientName && (
                                                     <span className="text-[11px] text-electric/50">· {mov.patientName}</span>
                                                 )}
+                                                {mov.categoria && (
+                                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-500/10 text-red-400/70 border border-red-500/15">{mov.categoria}</span>
+                                                )}
                                             </div>
                                         </div>
                                         <div className={`text-sm font-bold flex-shrink-0 ${
@@ -595,6 +601,24 @@ export const Caja: React.FC = () => {
                                         className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:border-electric outline-none transition-colors"
                                     />
                                 </div>
+                                {/* Categoría de gasto (solo egresos) */}
+                                {movTipo === 'egreso' && (
+                                    <div>
+                                        <label className="text-xs text-clinical/50 font-bold uppercase mb-2 block">Categoría</label>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {['Material dental','Renta','Servicios','Sueldos','Equipo','Limpieza','Marketing','Otros'].map(cat => (
+                                                <button key={cat} type="button" onClick={() => setMovCategoria(cat === movCategoria ? '' : cat)}
+                                                    className={`text-xs font-bold px-3 py-1.5 rounded-xl border transition-all ${
+                                                        movCategoria === cat
+                                                            ? 'border-red-500/60 bg-red-500/10 text-red-400'
+                                                            : 'border-white/10 text-clinical/40 hover:border-white/20 hover:text-clinical/60'
+                                                    }`}>
+                                                    {cat}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                                 {/* Método */}
                                 <div>
                                     <label className="text-xs text-clinical/50 font-bold uppercase mb-2 block">Método de pago</label>
