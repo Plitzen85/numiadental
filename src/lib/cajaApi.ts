@@ -75,7 +75,7 @@ export const getAllCajas = (): CajaDay[] => {
     return getAll().sort((a, b) => b.date.localeCompare(a.date));
 };
 
-/** Open today's caja */
+/** Open today's caja.  If already open, returns as-is.  If closed today, reopens it (clears cierre). */
 export const abrirCaja = (
     apertura: number,
     operadorId: string,
@@ -83,8 +83,17 @@ export const abrirCaja = (
 ): CajaDay => {
     const all = getAll();
     const id = todayKey();
-    const existing = all.find(d => d.id === id);
-    if (existing) return existing; // Already open
+    const existingIdx = all.findIndex(d => d.id === id);
+
+    if (existingIdx !== -1) {
+        const existing = all[existingIdx];
+        if (existing.status === 'open') return existing; // already open — no-op
+        // Reopen closed caja: clear cierre and set back to open
+        const reopened: CajaDay = { ...existing, status: 'open', cierre: undefined };
+        all[existingIdx] = reopened;
+        saveAll(all);
+        return reopened;
+    }
 
     const caja: CajaDay = {
         id,

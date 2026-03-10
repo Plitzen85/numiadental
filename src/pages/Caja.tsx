@@ -8,7 +8,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { useMarket } from '../context/MarketContext';
 import {
-    getTodayCaja, abrirCaja, cerrarCaja, addMovimiento,
+    getTodayCaja, abrirCaja, cerrarCaja, reabrirCaja, addMovimiento,
     getAllCajas, calcTotals, CajaDay, CajaMovimiento,
     editCajaCierre, deleteCaja,
 } from '../lib/cajaApi';
@@ -114,12 +114,12 @@ export const Caja: React.FC = () => {
     useEffect(() => {
         const todaysCaja = getTodayCaja();
         const todayId = `caja-${new Date().toISOString().split('T')[0]}`;
-        if (todaysCaja?.status === 'open') {
-            // Only show the active caja; closed ones go to historial
+        if (todaysCaja) {
+            // Show today's caja (open OR closed) — closed shows a "Reabrir" option
             setCaja(todaysCaja);
             setHistorial(getAllCajas().filter(d => d.id !== todayId));
         } else {
-            // Closed or no caja today → opening screen; include closed today in historial
+            // No caja at all today
             setCaja(null);
             setHistorial(getAllCajas());
         }
@@ -133,7 +133,9 @@ export const Caja: React.FC = () => {
         e.preventDefault();
         setSavingApertura(true);
         const opened = abrirCaja(Number(aperturaAmt) || 0, currentUserId, operadorName);
+        const todayId = `caja-${new Date().toISOString().split('T')[0]}`;
         setCaja(opened);
+        setHistorial(getAllCajas().filter(d => d.id !== todayId));
         setSavingApertura(false);
         setShowApertura(false);
         setAperturaAmt('');
@@ -169,15 +171,24 @@ export const Caja: React.FC = () => {
         setSavingCierre(true);
         const updated = cerrarCaja(Number(cierreEfectivo) || 0, cierreNotas, currentUserId);
         if (updated) {
-            // Move closed caja to historial and reset to "no caja" state
-            setHistorial(prev => [updated, ...prev.filter(d => d.id !== updated.id)]);
-            setCaja(null);
+            // Keep closed caja visible so user can see summary + Reabrir button
+            setCaja(updated);
+            setHistorial(prev => prev.filter(d => d.id !== updated.id));
         }
         setSavingCierre(false);
         setShowCierre(false);
         setCierreEfectivo('');
         setCierreNotas('');
         showToast('Caja cerrada correctamente');
+    };
+
+    const handleReabrirCaja = () => {
+        if (!caja) return;
+        const reopened = reabrirCaja(caja.id);
+        if (reopened) {
+            setCaja(reopened);
+            showToast('Caja reabierta correctamente');
+        }
     };
 
     const handleEditCierre = (e: React.FormEvent) => {
@@ -238,6 +249,15 @@ export const Caja: React.FC = () => {
                         className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-red-500/30 bg-red-500/5 text-red-400 hover:bg-red-500/10 transition-colors font-bold text-sm"
                     >
                         <Lock className="w-4 h-4" /> Cerrar Caja
+                    </button>
+                )}
+                {caja?.status === 'closed' && (
+                    <button
+                        type="button"
+                        onClick={handleReabrirCaja}
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-amber-500/30 bg-amber-500/5 text-amber-400 hover:bg-amber-500/10 transition-colors font-bold text-sm"
+                    >
+                        <Unlock className="w-4 h-4" /> Reabrir Caja
                     </button>
                 )}
             </div>
