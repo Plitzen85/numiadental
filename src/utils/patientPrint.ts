@@ -500,9 +500,17 @@ export function printTreatmentPlan(
         </tr>`;
     }).join('');
 
-    const doctorSig = branding?.medicoResponsable
-        ? `Dr(a). ${branding.medicoResponsable}${branding.cedProfesional ? ` — Céd. ${branding.cedProfesional}` : ''}`
-        : 'Médico Tratante';
+    // Use the doctor assigned to the pending items (most frequent), fallback to medicoResponsable
+    const doctorCounts = pendingItems.reduce<Record<string, number>>((acc, i) => {
+        if (i.doctorName) acc[i.doctorName] = (acc[i.doctorName] ?? 0) + 1;
+        return acc;
+    }, {});
+    const itemDoctor = Object.entries(doctorCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
+    const doctorSig = itemDoctor
+        ? `Dr(a). ${itemDoctor}${branding?.cedProfesional ? ` — Céd. ${branding.cedProfesional}` : ''}`
+        : branding?.medicoResponsable
+            ? `Dr(a). ${branding.medicoResponsable}${branding.cedProfesional ? ` — Céd. ${branding.cedProfesional}` : ''}`
+            : 'Médico Tratante';
 
     const presupHtml = `<!DOCTYPE html>
 <html lang="es">
