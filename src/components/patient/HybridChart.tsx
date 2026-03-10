@@ -10,8 +10,8 @@ import { loadPatientRecord, savePatientRecord } from '../../lib/supabase';
 const UPPER_ADULT = [18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28];
 const LOWER_ADULT = [48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38];
 
-// ─── Treatment catalog ────────────────────────────────────────────────────────
-const TREATMENT_PRICES: Record<ToothCondition, { name: string; price: number }> = {
+// ─── Treatment catalog defaults ───────────────────────────────────────────────
+export const DEFAULT_TREATMENT_PRICES: Record<ToothCondition, { name: string; price: number }> = {
     healthy: { name: 'Limpieza / Revisión', price: 0 },
     caries: { name: 'Tratamiento de Caries', price: 850 },
     resin: { name: 'Resina Compuesta', price: 1200 },
@@ -70,6 +70,12 @@ type ChartMode = 'odontogram' | 'periodonto';
 export const HybridChart: React.FC<{ patientId?: string }> = ({ patientId }) => {
     const { clinicProfile } = useMarket();
     const [chartMode, setChartMode] = useState<ChartMode>('odontogram');
+
+    // Merge clinic's custom prices on top of defaults
+    const treatmentPrices: Record<ToothCondition, { name: string; price: number }> = {
+        ...DEFAULT_TREATMENT_PRICES,
+        ...(clinicProfile?.odontogramPrices as Record<ToothCondition, { name: string; price: number }> | undefined),
+    };
 
     // Odontogram state
     const allTeeth = [...UPPER_ADULT, ...LOWER_ADULT];
@@ -135,8 +141,8 @@ export const HybridChart: React.FC<{ patientId?: string }> = ({ patientId }) => 
                 toothNumber: toothNum,
                 surface,
                 condition: newCondition,
-                price: TREATMENT_PRICES[newCondition].price,
-                name: TREATMENT_PRICES[newCondition].name,
+                price: treatmentPrices[newCondition].price,
+                name: treatmentPrices[newCondition].name,
             }];
         });
     };
@@ -146,6 +152,138 @@ export const HybridChart: React.FC<{ patientId?: string }> = ({ patientId }) => 
         setSurfaces(Object.fromEntries(allTeeth.map(n => [n, defaultSurfaces()])));
         setTreatments([]);
         setPeriodoData(Object.fromEntries(allTeeth.map(n => [n, defaultPeriodoData()])));
+    };
+
+    // ── Approve: push treatments to TreatmentPlan ────────────────────────────
+    const [isApproving, setIsApproving] = useState(false);
+    const [approvedOk, setApprovedOk] = useState(false);
+
+    const handleApprove = async () => {
+        if (!patientId || treatments.length === 0) return;
+        if (!window.confirm(`¿Aprobar ${treatments.length} tratamiento(s) y añadirlos al plan?`)) return;
+        setIsApproving(true);
+        const record = await loadPatientRecord(patientId);
+        const today = new Date().toISOString().split('T')[0];
+        const newItems = treatments.map(t => ({
+            id: `odo-${t.id}-${Date.now()}`,
+            name: t.name,
+            toothNumber: t.toothNumber,
+            surface: t.surface,
+            phase: 1,
+            status: 'pending' as const,
+            price: t.price,
+            discount: discountActive ? 10 : 0,
+            estimatedDate: today,
+        }));
+        const existingItems = record.treatmentPlan?.items ?? [];
+        await savePatientRecord(patientId, {
+            treatmentPlan: {
+                items: [...existingItems, ...newItems],
+                notes: record.treatmentPlan?.notes ?? '',
+                updatedAt: new Date().toISOString(),
+            },
+        });
+        // Clear chart for new consultation
+        setSurfaces(Object.fromEntries(allTeeth.map(n => [n, defaultSurfaces()])));
+        setTreatments([]);
+        setDiscountActive(false);
+        setIsApproving(false);
+        setApprovedOk(true);
+        setTimeout(() => setApprovedOk(false), 3000);
+    };
+
+    // ── PDF: generate VIP-style print window ─────────────────────────────────
+    const handlePDF = () => {
+        if (treatments.length === 0) return;
+        const patient = clinicProfile?.patients?.find(p => p.id === patientId);
+        const clinicName = clinicProfile?.nombre ?? 'Nümia Dental';
+        const clinicPhone = clinicProfile?.telefono ?? '';
+        const clinicEmail = clinicProfile?.email ?? '';
+        const today = new Date().toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' });
+
+        const rows = treatments.map(t => `
+            <tr>
+                <td style="padding:10px 12px;border-bottom:1px solid #f0f0f0;font-weight:600;color:#1e293b">${t.name}</td>
+                <td style="padding:10px 12px;border-bottom:1px solid #f0f0f0;color:#64748b;text-align:center">Diente ${t.toothNumber} · ${t.surface}</td>
+                <td style="padding:10px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:#1e40af">$${t.price.toLocaleString('es-MX')}</td>
+            </tr>
+        `).join('');
+
+        const discountRow = discountActive ? `
+            <tr>
+                <td colspan="2" style="padding:8px 12px;color:#2563eb;font-weight:600">Descuento Comercial (10%)</td>
+                <td style="padding:8px 12px;text-align:right;color:#2563eb;font-weight:700">−$${discountAmt.toLocaleString('es-MX')}</td>
+            </tr>
+        ` : '';
+
+        const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+        <title>Plan de Tratamiento — ${clinicName}</title>
+        <style>
+            *{margin:0;padding:0;box-sizing:border-box}
+            body{font-family:'Segoe UI',Arial,sans-serif;color:#1e293b;background:#fff;padding:40px}
+            .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:40px;padding-bottom:24px;border-bottom:3px solid #1e40af}
+            .clinic-name{font-size:28px;font-weight:900;color:#1e40af;letter-spacing:-0.5px}
+            .clinic-sub{font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:2px;margin-top:2px}
+            .clinic-contact{text-align:right;font-size:12px;color:#64748b;line-height:1.8}
+            .badge{display:inline-block;background:#eff6ff;color:#1e40af;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:2px;padding:4px 10px;border-radius:20px;border:1px solid #bfdbfe;margin-bottom:8px}
+            .patient-box{background:#f8fafc;border-radius:12px;padding:20px;margin-bottom:32px;display:flex;justify-content:space-between}
+            .patient-label{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#94a3b8;font-weight:700;margin-bottom:2px}
+            .patient-val{font-size:15px;font-weight:700;color:#1e293b}
+            table{width:100%;border-collapse:collapse;margin-bottom:8px}
+            thead tr{background:#1e40af;color:#fff}
+            thead th{padding:12px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px}
+            thead th:last-child{text-align:right}
+            .totals{background:#f0f7ff;border-radius:10px;padding:16px 20px;margin-top:24px;text-align:right}
+            .total-line{font-size:13px;color:#475569;margin-bottom:4px}
+            .total-main{font-size:26px;font-weight:900;color:#1e40af;margin-top:8px}
+            .footer{margin-top:40px;padding-top:20px;border-top:1px solid #e2e8f0;font-size:10px;color:#94a3b8;text-align:center;line-height:2}
+            @media print{body{padding:20px}button{display:none}}
+        </style></head><body>
+        <div style="text-align:right;margin-bottom:20px;print:display:none">
+            <button onclick="window.print()" style="background:#1e40af;color:#fff;border:none;padding:10px 24px;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px">Imprimir / Guardar PDF</button>
+        </div>
+        <div class="header">
+            <div>
+                <div class="badge">Propuesta VIP</div>
+                <div class="clinic-name">${clinicName}</div>
+                <div class="clinic-sub">Plan de Tratamiento Dental</div>
+            </div>
+            <div class="clinic-contact">
+                <div>${today}</div>
+                ${clinicPhone ? `<div>${clinicPhone}</div>` : ''}
+                ${clinicEmail ? `<div>${clinicEmail}</div>` : ''}
+            </div>
+        </div>
+        <div class="patient-box">
+            <div>
+                <div class="patient-label">Paciente</div>
+                <div class="patient-val">${patient ? `${patient.nombres} ${patient.apellidos}` : 'Sin nombre registrado'}</div>
+            </div>
+            <div style="text-align:right">
+                <div class="patient-label">Folio</div>
+                <div class="patient-val">${patient?.folio ?? '—'}</div>
+            </div>
+        </div>
+        <table>
+            <thead><tr>
+                <th>Tratamiento</th>
+                <th style="text-align:center">Localización</th>
+                <th style="text-align:right">Precio</th>
+            </tr></thead>
+            <tbody>${rows}${discountRow}</tbody>
+        </table>
+        <div class="totals">
+            <div class="total-line">Subtotal: $${subtotal.toLocaleString('es-MX')}</div>
+            <div class="total-main">Total: $${total.toLocaleString('es-MX')}</div>
+        </div>
+        <div class="footer">
+            ${clinicName} · Plan generado el ${today}<br>
+            Este documento es una propuesta de tratamiento. Los precios pueden variar.
+        </div>
+        </body></html>`;
+
+        const win = window.open('', '_blank', 'width=900,height=700');
+        if (win) { win.document.write(html); win.document.close(); }
     };
 
     // ── Quote calculations ───────────────────────────────────────────────────
@@ -257,11 +395,26 @@ export const HybridChart: React.FC<{ patientId?: string }> = ({ patientId }) => 
 
                 {/* Actions */}
                 <div className="flex gap-2">
-                    <button className="flex-1 bg-white text-blue-700 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 hover:bg-blue-50 transition-colors">
+                    <button
+                        type="button"
+                        onClick={handlePDF}
+                        disabled={treatments.length === 0}
+                        className="flex-1 bg-white text-blue-700 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 hover:bg-blue-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
                         <FileText className="w-4 h-4" /> PDF
                     </button>
-                    <button className="flex-1 bg-blue-600 border border-white/20 text-white py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 hover:bg-blue-700 transition-colors">
-                        <CheckCircle2 className="w-4 h-4" /> Aprobar
+                    <button
+                        type="button"
+                        onClick={handleApprove}
+                        disabled={!patientId || treatments.length === 0 || isApproving}
+                        className="flex-1 bg-blue-600 border border-white/20 text-white py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 hover:bg-blue-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                        {approvedOk
+                            ? <><CheckCircle2 className="w-4 h-4" /> ¡Aprobado!</>
+                            : isApproving
+                                ? <><div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Guardando…</>
+                                : <><CheckCircle2 className="w-4 h-4" /> Aprobar</>
+                        }
                     </button>
                 </div>
             </div>

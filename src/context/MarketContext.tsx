@@ -50,18 +50,19 @@ export interface ModulePermissions {
     finanzas: boolean;
     reportes: boolean;
     settings: boolean;
+    catalogo: boolean;
 }
 
 export const DEFAULT_ADMIN_PERMISSIONS: ModulePermissions = {
     dashboard: true, radar: true, agenda: true, clinica: true,
     inventario: true, campanas: true, turismo: true, finanzas: true,
-    reportes: true, settings: true,
+    reportes: true, settings: true, catalogo: true,
 };
 
 export const DEFAULT_DOCTOR_PERMISSIONS: ModulePermissions = {
     dashboard: true, radar: false, agenda: true, clinica: true,
     inventario: false, campanas: false, turismo: false, finanzas: false,
-    reportes: false, settings: false,
+    reportes: false, settings: false, catalogo: false,
 };
 
 export interface StaffMember {
@@ -122,6 +123,7 @@ export interface ClinicProfile {
         whatsapp?: string;
     };
     servicios: Record<string, Record<string, number>>; // Category -> { Service Name: Price }
+    odontogramPrices?: Record<string, { name: string; price: number }>; // ToothCondition -> price info
     logo?: string; // Base64 logo
     staff?: StaffMember[];
     depositos?: DirectoryEntity[];

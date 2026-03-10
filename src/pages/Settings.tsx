@@ -28,7 +28,7 @@ export const Settings: React.FC = () => {
     const { refreshUser } = useAuth();
     const currentUser = clinicProfile?.staff?.find(s => s.id === currentUserId);
     const isMasterAdmin = currentUser?.isMasterAdmin;
-    const hasFullAccess = isMasterAdmin || currentUser?.role === 'admin' || currentUser?.modulePermissions?.settings;
+    const hasFullAccess = isMasterAdmin;
 
     const [activeTab, setActiveTab] = useState<'perfil' | 'mi_perfil' | 'equipo'>(hasFullAccess ? 'perfil' : 'mi_perfil');
     const [isSaving, setIsSaving] = useState(false);

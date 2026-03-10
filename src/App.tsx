@@ -15,6 +15,7 @@ import { Reports } from './pages/Reports';
 import { Agenda } from './pages/Agenda';
 import { ClinicDirectory } from './pages/ClinicDirectory';
 import { Inventory } from './pages/Inventory';
+import { CatalogProducts } from './pages/CatalogProducts';
 import { Unauthorized } from './pages/Unauthorized';
 import { PermissionGuard } from './components/shared/PermissionGuard';
 
@@ -87,6 +88,7 @@ function AppContent() {
                 <Route path="/agenda" element={<PermissionGuard module="agenda"><Agenda /></PermissionGuard>} />
                 <Route path="/clinica" element={<PermissionGuard module="clinica"><ClinicDirectory /></PermissionGuard>} />
                 <Route path="/inventory" element={<PermissionGuard module="inventario"><Inventory /></PermissionGuard>} />
+                <Route path="/catalogo" element={<PermissionGuard module="catalogo"><CatalogProducts /></PermissionGuard>} />
                 <Route path="/settings" element={<PermissionGuard module="settings"><Settings /></PermissionGuard>} />
                 <Route path="/finanzas" element={<PermissionGuard module="finanzas"><Finances /></PermissionGuard>} />
                 <Route path="/reportes" element={<PermissionGuard module="reportes"><Reports /></PermissionGuard>} />

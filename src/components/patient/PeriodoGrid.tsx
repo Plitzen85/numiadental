@@ -236,7 +236,7 @@ const DepthInput: React.FC<{ v: number; onChange: (n: number) => void; hi?: bool
                 MozAppearance: 'textfield',
                 WebkitAppearance: 'none',
             } as React.CSSProperties}
-            className={`w-[18px] h-[26px] text-center text-[12px] font-bold border outline-none rounded focus:ring-1 focus:ring-electric/60 focus:border-electric/70 px-0
+            className={`w-[17px] h-[26px] text-center text-[12px] font-bold border outline-none rounded focus:ring-1 focus:ring-electric/60 focus:border-electric/70 px-0
                 [&::-webkit-inner-spin-button]:appearance-none
                 [&::-webkit-outer-spin-button]:appearance-none
                 [&::-webkit-inner-spin-button]:m-0
@@ -284,7 +284,7 @@ export const PeriodoGrid: React.FC<PeriodoGridProps> = ({ teethNumbers, data, on
     );
 
     const cell3 = (n: number, side: 'buccal' | 'lingual', field: 'probingDepth' | 'gingivalMargin', hi?: boolean) => (
-        <div key={n} className="w-[54px] flex-shrink-0 flex justify-center items-center gap-0.5">
+        <div key={n} className="w-[54px] flex-shrink-0 flex justify-center items-center gap-px">
             {([0, 1, 2] as const).map(i => (
                 <DepthInput key={i}
                     v={data[n]?.[field][side][i] ?? 0}

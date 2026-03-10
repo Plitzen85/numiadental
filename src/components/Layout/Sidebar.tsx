@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LayoutDashboard, Radar, Megaphone, Plane, Settings, LogOut, User as UserIcon, Landmark, FileBarChart, Calendar, Hospital, PackageSearch, Users } from 'lucide-react';
+import { LayoutDashboard, Radar, Megaphone, Plane, Settings, LogOut, User as UserIcon, Landmark, FileBarChart, Calendar, Hospital, PackageSearch, Users, Tag } from 'lucide-react';
 import { useMarket, ModulePermissions } from '../../context/MarketContext';
 import { useAuth } from '../../context/AuthContext';
 
@@ -15,6 +15,7 @@ const allNavItems: { id: string; label: string; icon: React.ElementType; path: s
     { id: 'agenda', label: 'Agenda & CRM', icon: Calendar, path: '/agenda', module: 'agenda' },
     { id: 'clinica', label: 'Clínica', icon: Hospital, path: '/clinica', module: 'clinica' },
     { id: 'inventario', label: 'Inventario', icon: PackageSearch, path: '/inventory', module: 'inventario' },
+    { id: 'catalogo', label: 'Catálogo de Productos', icon: Tag, path: '/catalogo', module: 'catalogo' },
     { id: 'campanas', label: 'Campañas', icon: Megaphone, path: '/campaigns', module: 'campanas' },
     { id: 'turismo', label: 'Turismo Dental', icon: Plane, path: '/tourism', module: 'turismo' },
     { id: 'finanzas', label: 'Finanzas', icon: Landmark, path: '/finanzas', module: 'finanzas' },
@@ -91,7 +92,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentPath, onNavigate, onLog
                         <button onClick={() => { onNavigate('/settings'); setShowSettings(false); }} className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-clinical/70 hover:bg-white/5 hover:text-clinical rounded-lg transition-colors">
                             <UserIcon className="w-4 h-4 text-premium" /> <span>Mi Perfil</span>
                         </button>
-                        {(currentUser?.isMasterAdmin || currentUser?.role === 'admin' || currentUser?.modulePermissions?.settings) && (
+                        {currentUser?.isMasterAdmin && (
                             <>
                                 <button onClick={() => { onNavigate('/settings'); setShowSettings(false); }} className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-clinical/70 hover:bg-white/5 hover:text-clinical rounded-lg transition-colors mt-1">
                                     <Hospital className="w-4 h-4" /> <span>Mi Clínica</span>
