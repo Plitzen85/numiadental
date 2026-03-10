@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Calendar as CalendarIcon, UserPlus, Sparkles, RefreshCcw, CheckCircle2, Bot, Wifi } from 'lucide-react';
+import { Calendar as CalendarIcon, UserPlus, Sparkles, RefreshCcw, CheckCircle2, Bot, Wifi, DoorOpen, Armchair, CreditCard, Flag } from 'lucide-react';
 import { useMarket, isDoctor } from '../context/MarketContext';
 import { AppointmentType, getActiveUnitsAtTime, parseTimeToMinutes } from '../lib/agendaLogic';
 import {
@@ -8,6 +8,7 @@ import {
     gcalEventToAppointment,
     getConnectedDoctorIds,
     getAuthorizedDoctorIds,
+    getStoredToken,
     silentReconnect,
     deleteCalendarEvent,
     createCalendarEvent,
@@ -52,6 +53,7 @@ export const Agenda: React.FC = () => {
     const [returnPatientId, setReturnPatientId] = useState<string | undefined>(undefined);
     const [cancelConfirmAppt, setCancelConfirmAppt] = useState<AppointmentType | null>(null);
     const [apptActionMenu, setApptActionMenu] = useState<AppointmentType | null>(null);
+    const [patientProfileTab, setPatientProfileTab] = useState<'historial' | 'finanzas'>('historial');
     const [editingAppt, setEditingAppt] = useState<AppointmentType | undefined>(undefined);
     const [activeTab, setActiveTab] = useState<'calendario' | 'pacientes'>('calendario');
 
@@ -128,7 +130,11 @@ export const Agenda: React.FC = () => {
             // GIS reissues the token silently (no popup) if the user is still signed in to Google.
             const authorizedIds = getAuthorizedDoctorIds();
             if (authorizedIds.length > 0) {
-                await Promise.all(authorizedIds.map(id => silentReconnect(id)));
+                await Promise.all(authorizedIds.map(id => {
+                    const storedEmail = getStoredToken(id)?.email
+                        ?? doctors.find(d => d.id === id)?.email;
+                    return silentReconnect(id, storedEmail);
+                }));
             }
             setConnectedCount(getConnectedDoctorIds().length);
             await syncGoogleCalendar();
@@ -273,6 +279,65 @@ export const Agenda: React.FC = () => {
                 return updated;
             });
         }, 3000);
+    };
+
+    // ── Patient Journey helpers ─────────────────────────────────────────────────
+    const advanceApptStatus = (appt: AppointmentType, newStatus: AppointmentType['status']) => {
+        const isLocal = appointments.some(a => a.id === appt.id);
+        if (isLocal) {
+            setAppointments(prev => prev.map(a => a.id === appt.id ? { ...a, status: newStatus } : a));
+        } else {
+            setAppointments(prev => [...prev, { ...appt, status: newStatus }]);
+            setGcalEvents(prev => prev.filter(e => e.id !== appt.id));
+        }
+        if (newStatus === 'completed' || newStatus === 'billed') {
+            setFinanceStats(prev => ({
+                ...prev,
+                weeklyIncome: prev.weeklyIncome + 1500,
+                monthlyIncome: prev.monthlyIncome + 1500,
+                monthlyPatientsTreated: prev.monthlyPatientsTreated + 1,
+            }));
+        }
+        setApptActionMenu(null);
+    };
+
+    const handleFinalizarYCobrar = (appt: AppointmentType) => {
+        advanceApptStatus(appt, 'billed');
+        // Find linked patient to open finanzas
+        const patId = appt.linkedPatientId ?? patients.find(p =>
+            `${p.nombres} ${p.apellidos}`.toLowerCase() === appt.patientName.toLowerCase() ||
+            appt.patientName.toLowerCase().includes(p.nombres.toLowerCase())
+        )?.id;
+        if (patId) {
+            setSelectedPatientId(patId);
+            setPatientProfileTab('finanzas');
+            setIsPatientViewOpen(true);
+        }
+    };
+
+    // Status pipeline config
+    const STATUS_PIPELINE: { status: AppointmentType['status']; label: string; icon: React.ReactNode; color: string }[] = [
+        { status: 'confirmed', label: 'Confirmar',  icon: <CheckCircle2 className="w-3.5 h-3.5" />, color: 'bg-green-500/20 text-green-300 border-green-500/40 hover:bg-green-500/30' },
+        { status: 'arrived',   label: 'Check-in',   icon: <DoorOpen className="w-3.5 h-3.5" />,     color: 'bg-purple-500/20 text-purple-300 border-purple-500/40 hover:bg-purple-500/30' },
+        { status: 'in_chair',  label: 'En sillón',  icon: <Armchair className="w-3.5 h-3.5" />,     color: 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30' },
+        { status: 'completed', label: 'Finalizar',  icon: <Flag className="w-3.5 h-3.5" />,         color: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 hover:bg-cyan-500/30' },
+    ];
+
+    const NEXT_STATUS: Partial<Record<AppointmentType['status'], AppointmentType['status']>> = {
+        scheduled: 'confirmed',
+        confirmed: 'arrived',
+        arrived: 'in_chair',
+        in_chair: 'completed',
+    };
+
+    const STATUS_LABELS: Record<AppointmentType['status'], string> = {
+        scheduled: 'Por conf.',
+        confirmed:  'Confirmada',
+        arrived:    'En sala',
+        in_chair:   'En sillón',
+        completed:  'Terminada',
+        billed:     'Cobrada',
+        cancelled:  'Cancelada',
     };
 
     const daysOfWeek = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
@@ -544,56 +609,13 @@ export const Agenda: React.FC = () => {
                                                 // Status-based card background — status takes priority; gcal-blue only for unmodified (scheduled) gcal events
                                                 const getCardStyle = (status: string, isGcal: boolean) => {
                                                     if (status === 'cancelled') return 'bg-red-500/20 border-red-500/40 text-red-100';
+                                                    if (status === 'billed')    return 'bg-emerald-500/20 border-emerald-400/50 text-emerald-100';
                                                     if (status === 'completed') return 'bg-cyan-500/20 border-cyan-500/40 text-cyan-100';
+                                                    if (status === 'in_chair')  return 'bg-amber-500/20 border-amber-400/50 text-amber-100';
                                                     if (status === 'arrived')   return 'bg-purple-500/20 border-purple-500/40 text-purple-100';
                                                     if (status === 'confirmed') return 'bg-green-500/20 border-green-500/40 text-green-100';
-                                                    // scheduled: gcal events stay blue, local events gray
                                                     if (isGcal) return 'bg-blue-500/20 border-blue-400/40 text-blue-100';
                                                     return 'bg-gray-500/15 border-gray-400/30 text-gray-100';
-                                                };
-
-                                                // Status change: intercepts cancel (dialog) and confirmed (email).
-                                                const handleStatusChange = (e: React.ChangeEvent<HTMLSelectElement>, apptId: string) => {
-                                                    e.stopPropagation();
-                                                    const newStatus = e.target.value as AppointmentType['status'];
-
-                                                    // CANCEL → show confirm dialog; controlled select snaps back automatically
-                                                    if (newStatus === 'cancelled') {
-                                                        setCancelConfirmAppt(appt);
-                                                        return;
-                                                    }
-
-                                                    const isLocal = appointments.some(a => a.id === apptId);
-                                                    if (isLocal) {
-                                                        setAppointments(prev => prev.map(a => a.id === apptId ? { ...a, status: newStatus } : a));
-                                                    } else {
-                                                        const gcalAppt = gcalEvents.find(ev => ev.id === apptId);
-                                                        if (gcalAppt) setAppointments(prev => [...prev, { ...gcalAppt, status: newStatus }]);
-                                                    }
-
-                                                    // CONFIRMED → send email to patient via mailto
-                                                    if (newStatus === 'confirmed') {
-                                                        const patient = patients.find(p =>
-                                                            `${p.nombres} ${p.apellidos}`.toLowerCase() === appt.patientName.toLowerCase() ||
-                                                            appt.patientName.toLowerCase().includes(p.nombres.toLowerCase())
-                                                        );
-                                                        if (patient?.email) {
-                                                            const subject = encodeURIComponent(`Cita confirmada — Nümia Dental`);
-                                                            const body = encodeURIComponent(
-                                                                `Estimado/a ${patient.nombres},\n\nNos complace confirmar su cita en Nümia Dental:\n\n📅 Fecha: ${formattedDateString}\n🕐 Hora: ${appt.startTime}\n🦷 Procedimiento: ${appt.procedure}\n\nSi tiene alguna pregunta, no dude en contactarnos.\n\n¡Hasta pronto!\nNümia Dental`
-                                                            );
-                                                            window.open(`mailto:${patient.email}?subject=${subject}&body=${body}`);
-                                                        }
-                                                    }
-
-                                                    if (newStatus === 'completed') {
-                                                        setFinanceStats(prev => ({
-                                                            ...prev,
-                                                            weeklyIncome: prev.weeklyIncome + 1500,
-                                                            monthlyIncome: prev.monthlyIncome + 1500,
-                                                            monthlyPatientsTreated: prev.monthlyPatientsTreated + 1
-                                                        }));
-                                                    }
                                                 };
 
                                                 const cardStyle = getCardStyle(appt.status, appt.isGoogleCalendarEvent);
@@ -642,12 +664,14 @@ export const Agenda: React.FC = () => {
                                                         <div className="text-[10px] opacity-80 truncate pl-1.5">{appt.procedure}</div>
                                                         <div className="text-[9px] opacity-60 flex items-center justify-between mt-1 pl-1.5">
                                                             <span>{appt.startTime} ({appt.durationMinutes}m)</span>
-                                                            {(appt.status === 'arrived' || appt.status === 'completed') && <CheckCircle2 className="w-3 h-3" />}
+                                                            {appt.status === 'in_chair' && <Armchair className="w-3 h-3 text-amber-300" />}
+                                                        {appt.status === 'billed' && <CreditCard className="w-3 h-3 text-emerald-300" />}
+                                                        {(appt.status === 'arrived' || appt.status === 'completed') && <CheckCircle2 className="w-3 h-3" />}
                                                         </div>
 
-                                                        {/* BOTTOM RIBBON — status selector */}
+                                                        {/* BOTTOM RIBBON — status badge + quick-advance */}
                                                         <div
-                                                            className="absolute bottom-0 left-0 w-full flex items-center justify-between px-1 py-0.5 text-[9px] font-bold bg-black/20"
+                                                            className="absolute bottom-0 left-0 w-full flex items-center justify-between px-1.5 py-0.5 text-[9px] font-bold bg-black/20"
                                                             onClick={(e) => e.stopPropagation()}
                                                         >
                                                             {appt.aiNote && isOptimized ? (
@@ -655,20 +679,29 @@ export const Agenda: React.FC = () => {
                                                                     <Sparkles className="w-2 h-2 shrink-0" />
                                                                     <span className="truncate">{appt.aiNote}</span>
                                                                 </div>
-                                                            ) : <div />}
-                                                            <select
-                                                                title="Estado de la cita"
-                                                                aria-label="Estado de la cita"
-                                                                value={appt.status}
-                                                                onChange={(e) => handleStatusChange(e, appt.id)}
-                                                                className="bg-transparent outline-none appearance-none cursor-pointer hover:opacity-80 transition-opacity text-right text-white"
-                                                            >
-                                                                <option value="scheduled" className="text-black">Por conf.</option>
-                                                                <option value="confirmed" className="text-black">Confirmada</option>
-                                                                <option value="arrived"   className="text-black">En sala</option>
-                                                                <option value="completed" className="text-black">Terminada</option>
-                                                                <option value="cancelled" className="text-black">Cancelada</option>
-                                                            </select>
+                                                            ) : (
+                                                                <span className="opacity-60 truncate">{STATUS_LABELS[appt.status as AppointmentType['status']]}</span>
+                                                            )}
+                                                            {NEXT_STATUS[appt.status as AppointmentType['status']] && (
+                                                                <button
+                                                                    type="button"
+                                                                    title={`Avanzar a: ${STATUS_LABELS[NEXT_STATUS[appt.status as AppointmentType['status']]!]}`}
+                                                                    onClick={() => advanceApptStatus(appt, NEXT_STATUS[appt.status as AppointmentType['status']]!)}
+                                                                    className="shrink-0 rounded px-1 py-0.5 bg-white/10 hover:bg-white/20 transition-colors text-[8px] font-bold text-white flex items-center gap-0.5"
+                                                                >
+                                                                    ▶
+                                                                </button>
+                                                            )}
+                                                            {appt.status === 'in_chair' && (
+                                                                <button
+                                                                    type="button"
+                                                                    title="Finalizar y Cobrar"
+                                                                    onClick={() => handleFinalizarYCobrar(appt)}
+                                                                    className="shrink-0 rounded px-1 py-0.5 bg-emerald-500/20 hover:bg-emerald-500/40 transition-colors text-[8px] font-bold text-emerald-300 flex items-center gap-0.5"
+                                                                >
+                                                                    <CreditCard className="w-2.5 h-2.5" />
+                                                                </button>
+                                                            )}
                                                         </div>
                                                     </div>
                                                 );
@@ -734,7 +767,8 @@ export const Agenda: React.FC = () => {
                 <PatientProfile
                     patientId={selectedPatientId ?? ''}
                     patientName={patients.find(p => p.id === selectedPatientId) ? `${patients.find(p => p.id === selectedPatientId)?.nombres} ${patients.find(p => p.id === selectedPatientId)?.apellidos}` : 'Paciente Seleccionado'}
-                    onClose={() => setIsPatientViewOpen(false)}
+                    onClose={() => { setIsPatientViewOpen(false); setPatientProfileTab('historial'); }}
+                    initialTab={patientProfileTab}
                 />
             )}
 
@@ -844,6 +878,59 @@ export const Agenda: React.FC = () => {
                             ) : (
                                 /* --- NORMAL ACTION BUTTONS --- */
                                 <div className="space-y-3">
+                                    {/* Patient Journey pipeline */}
+                                    {apptActionMenu.status !== 'cancelled' && apptActionMenu.status !== 'billed' && (
+                                        <div className="bg-white/5 border border-white/10 rounded-xl p-3 space-y-2">
+                                            <p className="text-[10px] text-clinical/40 uppercase font-bold tracking-wider">Flujo del paciente</p>
+                                            {/* Pipeline steps */}
+                                            <div className="flex items-center gap-1 flex-wrap">
+                                                {STATUS_PIPELINE.map((step, i) => {
+                                                    const stepOrder = ['scheduled','confirmed','arrived','in_chair','completed','billed'];
+                                                    const currentIdx = stepOrder.indexOf(apptActionMenu.status);
+                                                    const stepIdx = stepOrder.indexOf(step.status);
+                                                    const isDone = stepIdx <= currentIdx;
+                                                    const isNext = stepIdx === currentIdx + 1;
+                                                    return (
+                                                        <React.Fragment key={step.status}>
+                                                            {i > 0 && <span className="text-white/20 text-xs">→</span>}
+                                                            <button
+                                                                type="button"
+                                                                disabled={!isNext}
+                                                                onClick={() => advanceApptStatus(apptActionMenu, step.status)}
+                                                                className={`flex items-center gap-1 px-2 py-1 rounded-lg border text-[10px] font-bold transition-all ${
+                                                                    isDone ? 'bg-white/10 border-white/10 text-white/30 line-through cursor-default' :
+                                                                    isNext ? `${step.color} cursor-pointer` :
+                                                                    'bg-white/5 border-white/5 text-white/20 cursor-default'
+                                                                }`}
+                                                            >
+                                                                {step.icon}{step.label}
+                                                            </button>
+                                                        </React.Fragment>
+                                                    );
+                                                })}
+                                            </div>
+                                            {/* Finalizar y Cobrar CTA */}
+                                            {(apptActionMenu.status === 'in_chair' || apptActionMenu.status === 'completed') && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleFinalizarYCobrar(apptActionMenu)}
+                                                    className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 font-bold text-sm transition-all"
+                                                >
+                                                    <CreditCard className="w-4 h-4" />
+                                                    Finalizar y Cobrar
+                                                </button>
+                                            )}
+                                            {/* Cancel */}
+                                            <button
+                                                type="button"
+                                                onClick={() => { setCancelConfirmAppt(apptActionMenu); setApptActionMenu(null); }}
+                                                className="w-full py-1.5 rounded-lg border border-red-500/20 text-red-400/60 text-xs hover:bg-red-500/10 transition-colors"
+                                            >
+                                                Cancelar cita
+                                            </button>
+                                        </div>
+                                    )}
+
                                     {/* Open patient profile */}
                                     <button
                                         onClick={() => {

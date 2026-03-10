@@ -22,6 +22,7 @@ interface PatientProfileProps {
     patientId: string;
     patientName: string;
     onClose: () => void;
+    initialTab?: TabId;
 }
 
 // ─── Visit status config (for list sidebar) ───────────────────────────────────
@@ -34,7 +35,7 @@ const VISIT_STATUS_DOT: Record<VisitStatus, string> = {
 
 type TabId = 'historial' | 'odontograma' | 'consultas' | 'plan_tratamiento' | 'finanzas';
 
-export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patientName, onClose }) => {
+export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patientName, onClose, initialTab }) => {
     const { currentUserId, clinicProfile, patients, setPatients } = useMarket();
     const currentDoctor = clinicProfile?.staff?.find(s => s.id === currentUserId);
     const patient = patients.find(p => p.id === patientId);
@@ -49,7 +50,7 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patie
     const adminAlertText = configuredAdminAlert ?? adeudoAlert;
     const hasAdminAlert = !!adminAlertText;
 
-    const [activeTab, setActiveTab] = useState<TabId>('historial');
+    const [activeTab, setActiveTab] = useState<TabId>(initialTab ?? 'historial');
     const [isAIViewerOpen, setIsAIViewerOpen] = useState(false);
     const [linkCopied, setLinkCopied] = useState(false);
 

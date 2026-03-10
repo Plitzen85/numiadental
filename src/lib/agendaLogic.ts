@@ -5,7 +5,7 @@ export interface AppointmentType {
     doctorId: string;
     startTime: string; // HH:mm format
     durationMinutes: number;
-    status: 'scheduled' | 'confirmed' | 'arrived' | 'completed' | 'cancelled';
+    status: 'scheduled' | 'confirmed' | 'arrived' | 'in_chair' | 'completed' | 'billed' | 'cancelled';
     paymentStatus?: 'pending' | 'paid';
     aiNote?: string;
     googleCalendarEventId?: string;
@@ -102,21 +102,27 @@ export const getTodayAppointmentsSummary = (appointments: AppointmentType[]) => 
     let scheduled = 0;
     let confirmed = 0;
     let arrived = 0;
+    let in_chair = 0;
     let completed = 0;
+    let billed = 0;
 
     appointments.forEach(appt => {
         if (appt.status === 'scheduled') scheduled++;
         if (appt.status === 'confirmed') confirmed++;
         if (appt.status === 'arrived') arrived++;
+        if (appt.status === 'in_chair') in_chair++;
         if (appt.status === 'completed') completed++;
+        if (appt.status === 'billed') billed++;
     });
 
     return {
-        total: appointments.length, // Total previstas
+        total: appointments.length,
         scheduled,
         confirmed,
         arrived,
-        completed
+        in_chair,
+        completed,
+        billed,
     };
 };
 
