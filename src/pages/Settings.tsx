@@ -557,6 +557,18 @@ export const Settings: React.FC = () => {
                                                         />
                                                         <span className="text-[10px] text-clinical/40">%</span>
                                                     </div>
+                                                    <span className="text-clinical/40 text-[10px]">•</span>
+                                                    <div className="flex items-center gap-1">
+                                                        <span className="text-[10px] text-clinical/40">Céd. Prof.</span>
+                                                        <input
+                                                            title="Cédula Profesional"
+                                                            type="text"
+                                                            value={member.cedProfesional ?? ''}
+                                                            onChange={e => updateStaffMember(member.id, { cedProfesional: e.target.value })}
+                                                            placeholder="Ej. 12345678"
+                                                            className="w-24 bg-white/5 border border-white/10 rounded px-1.5 py-0.5 text-[10px] font-bold text-electric focus:outline-none focus:border-electric/40"
+                                                        />
+                                                    </div>
                                                 </>
                                             )}
                                             <span className="text-clinical/40 text-[10px]">•</span>
