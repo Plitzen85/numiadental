@@ -7,6 +7,7 @@ export interface AppointmentType {
     durationMinutes: number;
     status: 'scheduled' | 'confirmed' | 'arrived' | 'in_chair' | 'completed' | 'billed' | 'cancelled';
     paymentStatus?: 'pending' | 'paid';
+    sillonId?: number;              // 1 | 2 | 3 — assigned dental chair
     aiNote?: string;
     googleCalendarEventId?: string;
     isGoogleCalendarEvent?: boolean;

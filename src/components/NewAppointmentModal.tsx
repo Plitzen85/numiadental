@@ -210,6 +210,7 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
             if (gcalId) gcalEventId = gcalId;
         }
 
+        const computedSillonId = (doctors.findIndex(d => d.id === selectedDoctor) % 3) + 1;
         const newAppt = {
             id: Date.now().toString(),
             patientName,
@@ -219,6 +220,8 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
             durationMinutes: duration,
             status: 'scheduled' as const,
             googleCalendarEventId: gcalEventId,
+            sillonId: editAppointment?.sillonId ?? computedSillonId,
+            linkedPatientId: linkedPatientId ?? editAppointment?.linkedPatientId ?? undefined,
         };
 
         if (editAppointment) {

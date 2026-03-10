@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Calendar as CalendarIcon, UserPlus, Sparkles, RefreshCcw, CheckCircle2, Bot, Wifi, DoorOpen, Armchair, CreditCard, Flag } from 'lucide-react';
+import { Calendar as CalendarIcon, UserPlus, Sparkles, RefreshCcw, CheckCircle2, Bot, Wifi, DoorOpen, Armchair, CreditCard, Flag, LayoutGrid, Stethoscope } from 'lucide-react';
 import { useMarket, isDoctor } from '../context/MarketContext';
 import { AppointmentType, getActiveUnitsAtTime, parseTimeToMinutes } from '../lib/agendaLogic';
 import {
@@ -56,6 +56,7 @@ export const Agenda: React.FC = () => {
     const [patientProfileTab, setPatientProfileTab] = useState<'historial' | 'finanzas'>('historial');
     const [editingAppt, setEditingAppt] = useState<AppointmentType | undefined>(undefined);
     const [activeTab, setActiveTab] = useState<'calendario' | 'pacientes'>('calendario');
+    const [calView, setCalView] = useState<'doctor' | 'sillon'>('doctor');
 
     // Drag-and-drop state
     const draggingApptRef = useRef<AppointmentType | null>(null);
@@ -523,27 +524,56 @@ export const Agenda: React.FC = () => {
                                             )}
                                         </div>
                                     </div>
+                                    {/* View toggle: Doctor ↔ Sillón */}
+                                    <div className="flex items-center gap-1 bg-white/5 border border-white/10 rounded-xl p-1">
+                                        <button
+                                            type="button"
+                                            onClick={() => setCalView('doctor')}
+                                            title="Vista por Doctor"
+                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${calView === 'doctor' ? 'bg-electric text-cobalt shadow' : 'text-clinical/50 hover:text-white'}`}
+                                        >
+                                            <Stethoscope className="w-3.5 h-3.5" /> Doctores
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setCalView('sillon')}
+                                            title="Vista por Sillón"
+                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${calView === 'sillon' ? 'bg-electric text-cobalt shadow' : 'text-clinical/50 hover:text-white'}`}
+                                        >
+                                            <LayoutGrid className="w-3.5 h-3.5" /> Sillones
+                                        </button>
+                                    </div>
                                 </div>
 
                                 {/* ADVANCED MULTI-DOCTOR GRID */}
                                 <div className="overflow-auto custom-scrollbar relative h-[500px] md:h-[60vh] bg-cobalt/30 rounded-xl border border-white/10 shadow-inner">
                                     <div className="min-w-max relative pb-12">
-                                        {/* Sticky Grid Header (Doctors) */}
+                                        {/* Sticky Grid Header */}
                                         <div className="flex border-b border-white/10 sticky top-0 z-40 bg-[#0B1526] shadow-md">
                                             <div className="w-20 shrink-0 border-r border-white/10 sticky left-0 z-50 bg-[#0B1526] text-center py-3 text-xs text-clinical/40 font-bold uppercase">
                                                 Hora
                                             </div>
-                                            {doctors.map(doctor => (
+                                            {calView === 'doctor' ? doctors.map(doctor => (
                                                 <div key={doctor.id} className="w-64 shrink-0 text-center py-3 border-r border-white/5 relative bg-[#0B1526]">
                                                     <div className="font-syne font-bold text-white text-sm truncate px-2">{doctor.nombres}</div>
                                                     <div className="text-[10px] text-clinical/60 uppercase">{doctor.especialidad}</div>
-                                                    {/* Google Calendar connected indicator */}
                                                     {getConnectedDoctorIds().includes(doctor.id) && (
                                                         <div className="absolute top-1 right-2 flex items-center gap-0.5">
                                                             <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></div>
                                                         </div>
                                                     )}
                                                     <div className={`absolute bottom-0 left-0 w-full h-1 ${doctor.colorTheme?.split(' ')[0] || 'bg-white/20'}`}></div>
+                                                </div>
+                                            )) : [1,2,3].map(n => (
+                                                <div key={n} className="w-64 shrink-0 text-center py-3 border-r border-white/5 relative bg-[#0B1526]">
+                                                    <div className="flex items-center justify-center gap-2">
+                                                        <Armchair className={`w-4 h-4 ${n===1?'text-cyan-400':n===2?'text-amber-400':'text-purple-400'}`} />
+                                                        <span className="font-syne font-bold text-white text-sm">Sillón {n}</span>
+                                                    </div>
+                                                    <div className="text-[10px] text-clinical/40 mt-0.5">
+                                                        {allAppointments.filter(a => (a.sillonId ?? ((doctors.findIndex(d=>d.id===a.doctorId)%3)+1)) === n && a.status !== 'cancelled').length} citas
+                                                    </div>
+                                                    <div className={`absolute bottom-0 left-0 w-full h-1 ${n===1?'bg-cyan-500':n===2?'bg-amber-500':'bg-purple-500'}`}></div>
                                                 </div>
                                             ))}
                                         </div>
@@ -553,30 +583,32 @@ export const Agenda: React.FC = () => {
                                             {timeSlots.map((time) => {
                                                 const activeUnits = getActiveUnitsAtTime(allAppointments, time);
                                                 const isMaxCapacity = activeUnits >= 3;
+                                                const columns = calView === 'doctor' ? doctors : [1,2,3];
 
                                                 return (
                                                     <div key={time} className="flex group relative">
                                                         <div className="w-20 shrink-0 border-r border-b border-white/10 sticky left-0 z-30 bg-[#0B1526] text-center py-2 text-xs text-clinical/80 font-medium">
                                                             <span className="-translate-y-3 block bg-[#0B1526] px-1 mx-auto w-fit relative">{time}</span>
                                                         </div>
-                                                        {doctors.map((doctor: any) => {
-                                                            const isDropTarget = dragOverSlot?.time === time && dragOverSlot?.doctorId === doctor.id;
+                                                        {columns.map((col: any) => {
+                                                            const colKey = calView === 'doctor' ? col.id : col;
+                                                            const isDropTarget = dragOverSlot?.time === time && dragOverSlot?.doctorId === String(colKey);
                                                             return (
                                                                 <div
-                                                                    key={`${doctor.id}-${time}`}
+                                                                    key={`${colKey}-${time}`}
                                                                     onClick={() => {
                                                                         if (!isMaxCapacity && !draggingApptRef.current) {
                                                                             setInitialModalTime(time);
-                                                                            setInitialModalDoctorId(doctor.id);
+                                                                            if (calView === 'doctor') setInitialModalDoctorId(col.id);
                                                                             setIsNewAppointmentModalOpen(true);
                                                                         }
                                                                     }}
-                                                                    onDragOver={e => { e.preventDefault(); setDragOverSlot({ time, doctorId: doctor.id }); }}
+                                                                    onDragOver={e => { e.preventDefault(); setDragOverSlot({ time, doctorId: String(colKey) }); }}
                                                                     onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverSlot(null); }}
                                                                     onDrop={e => {
                                                                         e.preventDefault();
-                                                                        if (draggingApptRef.current) {
-                                                                            handleApptDrop(draggingApptRef.current, time, doctor.id);
+                                                                        if (draggingApptRef.current && calView === 'doctor') {
+                                                                            handleApptDrop(draggingApptRef.current, time, col.id);
                                                                             draggingApptRef.current = null;
                                                                         }
                                                                         setDragOverSlot(null);
@@ -598,13 +630,16 @@ export const Agenda: React.FC = () => {
                                             {/* APPOINTMENT OVERLAYS */}
                                             {allAppointments.map((appt: any) => {
                                                 const doctorIndex = doctors.findIndex(d => d.id === appt.doctorId);
-                                                if (doctorIndex === -1) return null;
+                                                const sillonId: number = appt.sillonId ?? ((doctorIndex >= 0 ? doctorIndex : 0) % 3) + 1;
+                                                const colIndex = calView === 'doctor' ? doctorIndex : (sillonId - 1);
+                                                if (calView === 'doctor' && doctorIndex === -1) return null;
+                                                if (colIndex === -1) return null;
 
                                                 const startMins = parseTimeToMinutes(appt.startTime);
                                                 const gridStartMins = START_HOUR * 60;
                                                 const yOffset = ((startMins - gridStartMins) / TIME_INTERVAL_MINS) * 48;
                                                 const height = (appt.durationMinutes / TIME_INTERVAL_MINS) * 48;
-                                                const doctor = doctors[doctorIndex];
+                                                const doctor = doctors[doctorIndex] ?? null;
 
                                                 // Status-based card background — status takes priority; gcal-blue only for unmodified (scheduled) gcal events
                                                 const getCardStyle = (status: string, isGcal: boolean) => {
@@ -643,12 +678,16 @@ export const Agenda: React.FC = () => {
                                                         style={{
                                                             top: `${yOffset}px`,
                                                             height: `${height}px`,
-                                                            left: `calc(5rem + ${doctorIndex * 16}rem + 4px)`,
+                                                            left: `calc(5rem + ${colIndex * 16}rem + 4px)`,
                                                             width: `calc(16rem - 8px)`
                                                         }}
                                                     >
-                                                        {/* Doctor color accent bar */}
-                                                        <div className={`absolute top-0 left-0 w-1 h-full rounded-l-md ${doctor.colorTheme?.split(' ')[0] || 'bg-white/30'}`}></div>
+                                                        {/* Accent bar: doctor color in doctor view, sillón color in sillón view */}
+                                                        <div className={`absolute top-0 left-0 w-1 h-full rounded-l-md ${
+                                                            calView === 'doctor'
+                                                                ? (doctor?.colorTheme?.split(' ')[0] || 'bg-white/30')
+                                                                : (sillonId===1?'bg-cyan-500':sillonId===2?'bg-amber-500':'bg-purple-500')
+                                                        }`}></div>
 
                                                         <div className="flex items-center gap-1 pl-1.5">
                                                             {appt.isGoogleCalendarEvent && (
@@ -662,6 +701,9 @@ export const Agenda: React.FC = () => {
                                                             <div className="font-bold truncate">{appt.patientName}</div>
                                                         </div>
                                                         <div className="text-[10px] opacity-80 truncate pl-1.5">{appt.procedure}</div>
+                                                        {calView === 'sillon' && doctor && (
+                                                            <div className="text-[9px] opacity-50 truncate pl-1.5">{doctor.nombres}</div>
+                                                        )}
                                                         <div className="text-[9px] opacity-60 flex items-center justify-between mt-1 pl-1.5">
                                                             <span>{appt.startTime} ({appt.durationMinutes}m)</span>
                                                             {appt.status === 'in_chair' && <Armchair className="w-3 h-3 text-amber-300" />}
