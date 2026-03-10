@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { Printer, CheckCircle2, AlertTriangle, Loader2, ClipboardList, User } from 'lucide-react';
-import { loadClinicProfile, CLINIC_ID, supabase } from '../lib/supabase';
+import { Printer, CheckCircle2, AlertTriangle, Loader2, ClipboardList, User, ListChecks, FileSignature, CheckSquare, Square } from 'lucide-react';
+import { loadClinicProfile, loadPatientRecord, CLINIC_ID, supabase } from '../lib/supabase';
+import { TreatmentPlanItem, TreatmentStatus } from '../lib/supabase';
 import { ClinicProfile, Patient } from '../context/MarketContext';
 import { printPatientRecord } from '../utils/patientPrint';
 
@@ -22,6 +23,34 @@ const EMPTY_FORM: PreRegForm = {
     fumador: 'No', alcohol: 'No',
 };
 
+// ─── Consent items ─────────────────────────────────────────────────────────────
+const CONSENT_ITEMS = [
+    'Autorizo a la clínica a realizar los procedimientos indicados en mi plan de tratamiento.',
+    'He sido informado/a sobre los riesgos, beneficios y alternativas de los tratamientos propuestos.',
+    'Entiendo que los resultados pueden variar y que se requiere seguimiento y mantenimiento.',
+    'Autorizo el uso de radiografías y materiales de diagnóstico necesarios para mi atención.',
+    'Consiento que mis datos clínicos sean utilizados con fines estadísticos de forma anónima.',
+];
+
+// ─── Status helpers ─────────────────────────────────────────────────────────────
+const STATUS_LABEL: Record<TreatmentStatus, string> = {
+    pending: 'Pendiente',
+    in_progress: 'En progreso',
+    completed: 'Completado',
+    paid: 'Pagado',
+    cancelled: 'Cancelado',
+};
+
+const STATUS_COLOR: Record<TreatmentStatus, string> = {
+    pending: 'bg-yellow-100 text-yellow-700 border-yellow-200',
+    in_progress: 'bg-blue-100 text-blue-700 border-blue-200',
+    completed: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+    paid: 'bg-purple-100 text-purple-700 border-purple-200',
+    cancelled: 'bg-red-100 text-red-700 border-red-200',
+};
+
+type ActiveSection = 'datos' | 'historial' | 'plan' | 'consentimiento';
+
 export const RegistroPaciente: React.FC = () => {
     const { token } = useParams<{ token: string }>();
     const [loading, setLoading] = useState(true);
@@ -31,7 +60,18 @@ export const RegistroPaciente: React.FC = () => {
     const [form, setForm] = useState<PreRegForm>(EMPTY_FORM);
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
-    const [activeSection, setActiveSection] = useState<'datos' | 'historial'>('datos');
+    const [activeSection, setActiveSection] = useState<ActiveSection>('datos');
+
+    // Treatment plan
+    const [planItems, setPlanItems] = useState<TreatmentPlanItem[]>([]);
+    const [planNotes, setPlanNotes] = useState('');
+
+    // Consent
+    const [consentChecks, setConsentChecks] = useState<boolean[]>(Array(CONSENT_ITEMS.length).fill(false));
+    const [consentName, setConsentName] = useState('');
+    const [consentSaved, setConsentSaved] = useState(false);
+    const [consentSaving, setConsentSaving] = useState(false);
+    const [consentDate, setConsentDate] = useState('');
 
     useEffect(() => {
         const load = async () => {
@@ -41,6 +81,7 @@ export const RegistroPaciente: React.FC = () => {
             const found = profile.patients?.find(p => p.registroToken === token);
             if (found) {
                 setPatient(found);
+                setConsentName(`${found.nombres} ${found.apellidos}`);
                 setForm({
                     nombres: found.nombres, apellidos: found.apellidos,
                     email: found.email, telefono: found.telefono,
@@ -50,7 +91,17 @@ export const RegistroPaciente: React.FC = () => {
                     motivoConsulta: '', alergias: '', enfermedades: '',
                     medicamentos: '', fumador: 'No', alcohol: 'No',
                 });
-                // Try to load any existing pre-registration data
+                // Load patient record — treatment plan + consent
+                try {
+                    const rec = await loadPatientRecord(found.id);
+                    if (rec.treatmentPlan?.items?.length) {
+                        const active = rec.treatmentPlan.items.filter(i => i.status !== 'cancelled');
+                        setPlanItems(active);
+                        setPlanNotes(rec.treatmentPlan.notes ?? '');
+                    }
+                } catch { /* no record yet */ }
+
+                // Load pre-registration data
                 try {
                     const { data } = await supabase
                         .from('patient_records')
@@ -59,9 +110,16 @@ export const RegistroPaciente: React.FC = () => {
                         .eq('patient_id', found.id)
                         .single();
                     if (data?.data_json) {
-                        const rec = data.data_json as any;
-                        if (rec._preregistro) {
-                            setForm(prev => ({ ...prev, ...rec._preregistro }));
+                        const raw = data.data_json as Record<string, unknown>;
+                        if (raw._preregistro) {
+                            setForm(prev => ({ ...prev, ...(raw._preregistro as Partial<PreRegForm>) }));
+                        }
+                        if (raw._consentimiento) {
+                            const c = raw._consentimiento as { checks: boolean[]; name: string; date: string };
+                            setConsentChecks(c.checks ?? Array(CONSENT_ITEMS.length).fill(false));
+                            setConsentName(c.name ?? `${found.nombres} ${found.apellidos}`);
+                            setConsentDate(c.date ?? '');
+                            if (c.checks?.every(Boolean) && c.name) setConsentSaved(true);
                         }
                     }
                 } catch { /* no previous record */ }
@@ -81,7 +139,6 @@ export const RegistroPaciente: React.FC = () => {
         if (!patient) return;
         setSaving(true);
         try {
-            // Load existing record, merge pre-registration data
             const { data: existing } = await supabase
                 .from('patient_records')
                 .select('data_json')
@@ -89,7 +146,7 @@ export const RegistroPaciente: React.FC = () => {
                 .eq('patient_id', patient.id)
                 .single();
 
-            const current = (existing?.data_json as any) ?? {};
+            const current = (existing?.data_json as Record<string, unknown>) ?? {};
             const updated = { ...current, _preregistro: { ...form, _fecha: new Date().toISOString() } };
 
             await supabase
@@ -106,6 +163,41 @@ export const RegistroPaciente: React.FC = () => {
             console.error('Failed to save pre-registration:', err);
         } finally {
             setSaving(false);
+        }
+    };
+
+    const handleConsentSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!patient || !consentChecks.every(Boolean) || !consentName.trim()) return;
+        setConsentSaving(true);
+        try {
+            const { data: existing } = await supabase
+                .from('patient_records')
+                .select('data_json')
+                .eq('clinic_id', CLINIC_ID)
+                .eq('patient_id', patient.id)
+                .single();
+
+            const current = (existing?.data_json as Record<string, unknown>) ?? {};
+            const dateStr = new Date().toLocaleString('es-MX', { dateStyle: 'long', timeStyle: 'short' });
+            const consentPayload = { checks: consentChecks, name: consentName.trim(), date: dateStr };
+            const updated = { ...current, _consentimiento: consentPayload };
+
+            await supabase
+                .from('patient_records')
+                .upsert({
+                    clinic_id: CLINIC_ID,
+                    patient_id: patient.id,
+                    data_json: updated,
+                    updated_at: new Date().toISOString(),
+                }, { onConflict: 'clinic_id,patient_id' });
+
+            setConsentDate(dateStr);
+            setConsentSaved(true);
+        } catch (err) {
+            console.error('Failed to save consent:', err);
+        } finally {
+            setConsentSaving(false);
         }
     };
 
@@ -132,6 +224,13 @@ export const RegistroPaciente: React.FC = () => {
 
     const inputCls = "w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 focus:border-[#00d4ff] focus:ring-1 focus:ring-[#00d4ff]/20 outline-none transition-all";
     const labelCls = "block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1";
+
+    const TABS: { id: ActiveSection; label: string; icon: React.ReactNode }[] = [
+        { id: 'datos', label: 'Mis Datos', icon: <User className="w-4 h-4" /> },
+        { id: 'historial', label: 'Pre-registro', icon: <ClipboardList className="w-4 h-4" /> },
+        { id: 'plan', label: 'Mi Plan', icon: <ListChecks className="w-4 h-4" /> },
+        { id: 'consentimiento', label: 'Consentimiento', icon: <FileSignature className="w-4 h-4" /> },
+    ];
 
     return (
         <div className="min-h-screen bg-gray-50 font-sans">
@@ -183,32 +282,30 @@ export const RegistroPaciente: React.FC = () => {
                 )}
 
                 {/* Section tabs */}
-                <div className="flex gap-1 bg-gray-100 p-1 rounded-xl mb-6">
-                    <button
-                        type="button"
-                        onClick={() => setActiveSection('datos')}
-                        className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all ${activeSection === 'datos' ? 'bg-white text-[#00d4ff] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                    >
-                        <User className="w-4 h-4" /> Mis Datos
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => setActiveSection('historial')}
-                        className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all ${activeSection === 'historial' ? 'bg-white text-[#00d4ff] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                    >
-                        <ClipboardList className="w-4 h-4" /> Pre-registro Clínico
-                    </button>
+                <div className="grid grid-cols-4 gap-1 bg-gray-100 p-1 rounded-xl mb-6">
+                    {TABS.map(tab => (
+                        <button
+                            key={tab.id}
+                            type="button"
+                            onClick={() => setActiveSection(tab.id)}
+                            className={`flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 py-2 px-1 rounded-lg text-[11px] sm:text-sm font-bold transition-all ${activeSection === tab.id ? 'bg-white text-[#00d4ff] shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                        >
+                            {tab.icon}
+                            <span className="leading-tight text-center">{tab.label}</span>
+                        </button>
+                    ))}
                 </div>
 
-                {saved ? (
-                    <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-6 text-center">
-                        <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-3" />
-                        <h3 className="text-lg font-bold text-emerald-800 mb-1">¡Información guardada!</h3>
-                        <p className="text-sm text-emerald-700">Tus datos han sido enviados a la clínica. Te esperamos.</p>
-                    </div>
-                ) : (
-                    <form onSubmit={handleSubmit} className="space-y-6">
-                        {activeSection === 'datos' && (
+                {/* ── Datos personales ── */}
+                {activeSection === 'datos' && (
+                    saved ? (
+                        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-6 text-center">
+                            <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-3" />
+                            <h3 className="text-lg font-bold text-emerald-800 mb-1">¡Información guardada!</h3>
+                            <p className="text-sm text-emerald-700">Tus datos han sido enviados a la clínica. Te esperamos.</p>
+                        </div>
+                    ) : (
+                        <form onSubmit={handleSubmit} className="space-y-6">
                             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
                                 <h2 className="text-sm font-black text-gray-700 uppercase tracking-wider border-b border-gray-100 pb-3">
                                     Datos Personales
@@ -258,9 +355,33 @@ export const RegistroPaciente: React.FC = () => {
                                     <input className={inputCls} value={form.domicilio} onChange={e => handleInput('domicilio', e.target.value)} placeholder="Calle, número, colonia..." />
                                 </div>
                             </div>
-                        )}
+                            <button
+                                type="submit"
+                                disabled={saving}
+                                className="w-full bg-[#00d4ff] hover:bg-[#00bfe8] text-[#0a0a1a] font-black py-3 rounded-xl transition-colors shadow-lg disabled:opacity-60 flex items-center justify-center gap-2"
+                            >
+                                {saving
+                                    ? <><Loader2 className="w-4 h-4 animate-spin" /> Enviando...</>
+                                    : <><CheckCircle2 className="w-4 h-4" /> Enviar información a la clínica</>
+                                }
+                            </button>
+                            <p className="text-center text-xs text-gray-400 pb-4">
+                                Tu información es confidencial y se usa únicamente para fines clínicos. · COFEPRIS
+                            </p>
+                        </form>
+                    )
+                )}
 
-                        {activeSection === 'historial' && (
+                {/* ── Pre-registro clínico ── */}
+                {activeSection === 'historial' && (
+                    saved ? (
+                        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-6 text-center">
+                            <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-3" />
+                            <h3 className="text-lg font-bold text-emerald-800 mb-1">¡Historial guardado!</h3>
+                            <p className="text-sm text-emerald-700">Tus datos clínicos han sido enviados a la clínica.</p>
+                        </div>
+                    ) : (
+                        <form onSubmit={handleSubmit} className="space-y-6">
                             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
                                 <h2 className="text-sm font-black text-gray-700 uppercase tracking-wider border-b border-gray-100 pb-3">
                                     Pre-registro Clínico
@@ -296,23 +417,177 @@ export const RegistroPaciente: React.FC = () => {
                                     </div>
                                 </div>
                             </div>
+                            <button
+                                type="submit"
+                                disabled={saving}
+                                className="w-full bg-[#00d4ff] hover:bg-[#00bfe8] text-[#0a0a1a] font-black py-3 rounded-xl transition-colors shadow-lg disabled:opacity-60 flex items-center justify-center gap-2"
+                            >
+                                {saving
+                                    ? <><Loader2 className="w-4 h-4 animate-spin" /> Enviando...</>
+                                    : <><CheckCircle2 className="w-4 h-4" /> Enviar información a la clínica</>
+                                }
+                            </button>
+                            <p className="text-center text-xs text-gray-400 pb-4">
+                                Tu información es confidencial y se usa únicamente para fines clínicos. · COFEPRIS
+                            </p>
+                        </form>
+                    )
+                )}
+
+                {/* ── Mi Plan de Tratamiento ── */}
+                {activeSection === 'plan' && (
+                    <div className="space-y-4">
+                        {planItems.length === 0 ? (
+                            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-10 text-center">
+                                <ListChecks className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+                                <p className="text-gray-500 font-medium">Tu plan de tratamiento aún no está disponible.</p>
+                                <p className="text-gray-400 text-sm mt-1">Consulta con tu doctor para más información.</p>
+                            </div>
+                        ) : (
+                            <>
+                                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                                    <div className="px-5 py-4 border-b border-gray-100">
+                                        <h2 className="text-sm font-black text-gray-700 uppercase tracking-wider">
+                                            Plan de Tratamiento — {planItems.length} procedimiento{planItems.length !== 1 ? 's' : ''}
+                                        </h2>
+                                        {planNotes && (
+                                            <p className="text-xs text-gray-500 mt-1">{planNotes}</p>
+                                        )}
+                                    </div>
+                                    <div className="divide-y divide-gray-50">
+                                        {planItems.map((item, i) => {
+                                            const finalPrice = item.price * (1 - (item.discount ?? 0) / 100);
+                                            return (
+                                                <div key={item.id ?? i} className="flex items-start justify-between gap-3 px-5 py-3.5">
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-sm font-semibold text-gray-800 truncate">{item.name}</p>
+                                                        <p className="text-xs text-gray-400 mt-0.5">
+                                                            {item.toothNumber ? `Diente #${item.toothNumber}` : 'General'}
+                                                            {item.phase ? ` · Fase ${item.phase}` : ''}
+                                                            {item.doctorName ? ` · ${item.doctorName}` : ''}
+                                                        </p>
+                                                    </div>
+                                                    <div className="flex items-center gap-3 shrink-0">
+                                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${STATUS_COLOR[item.status]}`}>
+                                                            {STATUS_LABEL[item.status]}
+                                                        </span>
+                                                        <span className="text-sm font-bold text-gray-700">
+                                                            ${finalPrice.toLocaleString('es-MX', { minimumFractionDigits: 0 })}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                {/* Summary */}
+                                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                                    <div className="flex justify-between items-center text-sm">
+                                        <span className="text-gray-500">Total del plan</span>
+                                        <span className="font-black text-gray-800 text-lg">
+                                            ${planItems.filter(i => i.status !== 'cancelled').reduce((acc, i) => acc + i.price * (1 - (i.discount ?? 0) / 100), 0).toLocaleString('es-MX', { minimumFractionDigits: 0 })} MXN
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between items-center text-sm mt-2">
+                                        <span className="text-emerald-600">Completado / Pagado</span>
+                                        <span className="font-bold text-emerald-600">
+                                            ${planItems.filter(i => i.status === 'completed' || i.status === 'paid').reduce((acc, i) => acc + i.price * (1 - (i.discount ?? 0) / 100), 0).toLocaleString('es-MX', { minimumFractionDigits: 0 })} MXN
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between items-center text-sm mt-2">
+                                        <span className="text-yellow-600">Pendiente</span>
+                                        <span className="font-bold text-yellow-600">
+                                            ${planItems.filter(i => i.status === 'pending' || i.status === 'in_progress').reduce((acc, i) => acc + i.price * (1 - (i.discount ?? 0) / 100), 0).toLocaleString('es-MX', { minimumFractionDigits: 0 })} MXN
+                                        </span>
+                                    </div>
+                                </div>
+                            </>
                         )}
+                    </div>
+                )}
 
-                        <button
-                            type="submit"
-                            disabled={saving}
-                            className="w-full bg-[#00d4ff] hover:bg-[#00bfe8] text-[#0a0a1a] font-black py-3 rounded-xl transition-colors shadow-lg disabled:opacity-60 flex items-center justify-center gap-2"
-                        >
-                            {saving
-                                ? <><Loader2 className="w-4 h-4 animate-spin" /> Enviando...</>
-                                : <><CheckCircle2 className="w-4 h-4" /> Enviar información a la clínica</>
-                            }
-                        </button>
+                {/* ── Consentimiento informado ── */}
+                {activeSection === 'consentimiento' && (
+                    consentSaved ? (
+                        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-8 text-center space-y-3">
+                            <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto" />
+                            <h3 className="text-lg font-bold text-emerald-800">Consentimiento firmado</h3>
+                            <p className="text-sm text-emerald-700">
+                                Firmado digitalmente por <strong>{consentName}</strong>
+                            </p>
+                            {consentDate && (
+                                <p className="text-xs text-emerald-600">{consentDate}</p>
+                            )}
+                            <p className="text-xs text-emerald-600/70 pt-2">
+                                Este consentimiento quedó registrado en tu expediente clínico.
+                            </p>
+                        </div>
+                    ) : (
+                        <form onSubmit={handleConsentSubmit} className="space-y-5">
+                            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
+                                <h2 className="text-sm font-black text-gray-700 uppercase tracking-wider border-b border-gray-100 pb-3">
+                                    Consentimiento Informado
+                                </h2>
+                                <p className="text-xs text-gray-500 leading-relaxed">
+                                    Por favor, lee y confirma cada punto antes de firmar digitalmente tu consentimiento informado.
+                                </p>
 
-                        <p className="text-center text-xs text-gray-400 pb-4">
-                            Tu información es confidencial y se usa únicamente para fines clínicos. · COFEPRIS
-                        </p>
-                    </form>
+                                <div className="space-y-3">
+                                    {CONSENT_ITEMS.map((item, i) => (
+                                        <button
+                                            key={i}
+                                            type="button"
+                                            onClick={() => setConsentChecks(prev => prev.map((v, idx) => idx === i ? !v : v))}
+                                            className={`w-full flex items-start gap-3 p-3 rounded-xl border text-left transition-all ${consentChecks[i] ? 'bg-emerald-50 border-emerald-200' : 'bg-gray-50 border-gray-200 hover:border-[#00d4ff]/40'}`}
+                                        >
+                                            {consentChecks[i]
+                                                ? <CheckSquare className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
+                                                : <Square className="w-5 h-5 text-gray-300 shrink-0 mt-0.5" />
+                                            }
+                                            <span className={`text-sm leading-relaxed ${consentChecks[i] ? 'text-emerald-800' : 'text-gray-600'}`}>
+                                                {item}
+                                            </span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Digital signature */}
+                            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-3">
+                                <h3 className="text-sm font-bold text-gray-600 uppercase tracking-wider">Firma Digital</h3>
+                                <p className="text-xs text-gray-400">
+                                    Escribe tu nombre completo para firmar digitalmente este consentimiento.
+                                </p>
+                                <input
+                                    className={inputCls}
+                                    value={consentName}
+                                    onChange={e => setConsentName(e.target.value)}
+                                    placeholder="Nombre completo..."
+                                />
+                                {!consentChecks.every(Boolean) && (
+                                    <p className="text-xs text-amber-600 flex items-center gap-1">
+                                        <AlertTriangle className="w-3 h-3" /> Debes confirmar todos los puntos para continuar.
+                                    </p>
+                                )}
+                            </div>
+
+                            <button
+                                type="submit"
+                                disabled={consentSaving || !consentChecks.every(Boolean) || !consentName.trim()}
+                                className="w-full bg-[#00d4ff] hover:bg-[#00bfe8] text-[#0a0a1a] font-black py-3 rounded-xl transition-colors shadow-lg disabled:opacity-40 flex items-center justify-center gap-2"
+                            >
+                                {consentSaving
+                                    ? <><Loader2 className="w-4 h-4 animate-spin" /> Firmando...</>
+                                    : <><FileSignature className="w-4 h-4" /> Firmar Consentimiento</>
+                                }
+                            </button>
+
+                            <p className="text-center text-xs text-gray-400 pb-4">
+                                Tu consentimiento digital tiene validez legal equivalente a una firma autógrafa. · COFEPRIS
+                            </p>
+                        </form>
+                    )
                 )}
             </div>
         </div>

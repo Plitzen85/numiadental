@@ -186,3 +186,55 @@ export const calcTotals = (caja: CajaDay): CajaTotals => {
 
 const calcEfectivoEsperado = (caja: CajaDay): number =>
     calcTotals(caja).efectivoEsperado;
+
+/** Re-open a closed caja (for corrections; admin use) */
+export const reabrirCaja = (cajaId: string): CajaDay | null => {
+    const all = getAll();
+    const idx = all.findIndex(d => d.id === cajaId);
+    if (idx === -1) return null;
+    all[idx].status = 'open';
+    delete all[idx].cierre;
+    saveAll(all);
+    return all[idx];
+};
+
+/** Edit closure notes / efectivo contado of a historical caja */
+export const editCajaCierre = (
+    cajaId: string,
+    efectivoContado: number,
+    notas: string,
+): CajaDay | null => {
+    const all = getAll();
+    const idx = all.findIndex(d => d.id === cajaId);
+    if (idx === -1 || !all[idx].cierre) return null;
+    const caja = all[idx];
+    const efectivoEsperado = calcEfectivoEsperado(caja);
+    caja.cierre = {
+        ...caja.cierre!,
+        efectivoContado,
+        diferencia: efectivoContado - efectivoEsperado,
+        notas,
+    };
+    all[idx] = caja;
+    saveAll(all);
+    return caja;
+};
+
+/** Add a correction movement to any caja day (historical correction) */
+export const addMovimientoToCaja = (
+    cajaId: string,
+    mov: Omit<CajaMovimiento, 'id' | 'time'>
+): CajaDay | null => {
+    const all = getAll();
+    const idx = all.findIndex(d => d.id === cajaId);
+    if (idx === -1) return null;
+    const now = new Date();
+    const newMov: CajaMovimiento = {
+        ...mov,
+        id: `mov-${Date.now()}`,
+        time: now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }),
+    };
+    all[idx].movimientos.push(newMov);
+    saveAll(all);
+    return all[idx];
+};

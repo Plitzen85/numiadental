@@ -3,13 +3,14 @@ import {
     Landmark, Plus, Lock, Unlock, TrendingUp, TrendingDown,
     Banknote, CreditCard, ArrowDownToLine, Bitcoin, Minus,
     CheckCircle2, AlertCircle, Clock, ChevronDown, ChevronUp,
-    DollarSign, X, Loader2, Receipt,
+    DollarSign, X, Loader2, Receipt, Pencil,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useMarket } from '../context/MarketContext';
 import {
     getTodayCaja, abrirCaja, cerrarCaja, addMovimiento,
     getAllCajas, calcTotals, CajaDay, CajaMovimiento,
+    editCajaCierre,
 } from '../lib/cajaApi';
 import { MetodoPago } from '../lib/supabase';
 
@@ -93,6 +94,12 @@ export const Caja: React.FC = () => {
     // ── Expand list ──────────────────────────────────────────────────────────
     const [showAllMovs, setShowAllMovs] = useState(false);
 
+    // ── History edit modal ───────────────────────────────────────────────────
+    const [editingCaja, setEditingCaja] = useState<CajaDay | null>(null);
+    const [editEfectivo, setEditEfectivo] = useState('');
+    const [editNotas, setEditNotas] = useState('');
+    const [savingEdit, setSavingEdit] = useState(false);
+
     // ── Toast ────────────────────────────────────────────────────────────────
     const [toast, setToast] = useState('');
     const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 3000); };
@@ -145,14 +152,28 @@ export const Caja: React.FC = () => {
         setSavingCierre(true);
         const updated = cerrarCaja(Number(cierreEfectivo) || 0, cierreNotas, currentUserId);
         if (updated) {
-            setCaja({ ...updated });
+            // Move closed caja to historial and reset to "no caja" state
             setHistorial(prev => [updated, ...prev.filter(d => d.id !== updated.id)]);
+            setCaja(null);
         }
         setSavingCierre(false);
         setShowCierre(false);
         setCierreEfectivo('');
         setCierreNotas('');
         showToast('Caja cerrada correctamente');
+    };
+
+    const handleEditCierre = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editingCaja) return;
+        setSavingEdit(true);
+        const updated = editCajaCierre(editingCaja.id, Number(editEfectivo) || 0, editNotas);
+        if (updated) {
+            setHistorial(prev => prev.map(h => h.id === updated.id ? updated : h));
+        }
+        setSavingEdit(false);
+        setEditingCaja(null);
+        showToast('Cierre actualizado correctamente');
     };
 
     const sortedMovs = useMemo(() =>
@@ -392,17 +413,36 @@ export const Caja: React.FC = () => {
                                 {historial.slice(0, 10).map(h => {
                                     const t = calcTotals(h);
                                     return (
-                                        <div key={h.id} className="flex items-center justify-between bg-white/3 border border-white/10 rounded-xl px-4 py-3">
-                                            <div>
-                                                <p className="text-sm text-white font-bold capitalize">{fmtDate(h.date)}</p>
-                                                <p className="text-xs text-clinical/35">
-                                                    {h.movimientos.length} mov. · Apertura {fmt(h.apertura)}
-                                                    {h.cierre ? ` · Dif. ${h.cierre.diferencia >= 0 ? '+' : ''}${fmt(h.cierre.diferencia)}` : ' · Sin cerrar'}
-                                                </p>
-                                            </div>
-                                            <div className="text-right">
-                                                <p className="text-sm font-bold text-electric">{fmt(t.ingresos)}</p>
-                                                <p className="text-[11px] text-clinical/35">ingresos</p>
+                                        <div key={h.id} className="bg-white/3 border border-white/10 rounded-xl px-4 py-3">
+                                            <div className="flex items-center justify-between">
+                                                <div>
+                                                    <p className="text-sm text-white font-bold capitalize">{fmtDate(h.date)}</p>
+                                                    <p className="text-xs text-clinical/35">
+                                                        {h.movimientos.length} mov. · Apertura {fmt(h.apertura)}
+                                                        {h.cierre ? ` · Dif. ${h.cierre.diferencia >= 0 ? '+' : ''}${fmt(h.cierre.diferencia)}` : ' · Sin cerrar'}
+                                                    </p>
+                                                    {h.cierre?.notas && (
+                                                        <p className="text-xs text-clinical/30 mt-0.5 italic truncate max-w-xs">"{h.cierre.notas}"</p>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center gap-3">
+                                                    <div className="text-right">
+                                                        <p className="text-sm font-bold text-electric">{fmt(t.ingresos)}</p>
+                                                        <p className="text-[11px] text-clinical/35">ingresos</p>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        title="Editar cierre"
+                                                        onClick={() => {
+                                                            setEditingCaja(h);
+                                                            setEditEfectivo(String(h.cierre?.efectivoContado ?? ''));
+                                                            setEditNotas(h.cierre?.notas ?? '');
+                                                        }}
+                                                        className="p-2 rounded-lg hover:bg-white/10 text-clinical/30 hover:text-electric transition-colors"
+                                                    >
+                                                        <Pencil className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
                                     );
@@ -560,6 +600,66 @@ export const Caja: React.FC = () => {
                                     className="w-full py-3.5 rounded-2xl bg-electric text-cobalt font-black flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
                                 >
                                     {savingMov ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Plus className="w-5 h-5" /> Registrar Movimiento</>}
+                                </button>
+                            </form>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* ════ MODAL EDITAR HISTORIAL ════ */}
+            <AnimatePresence>
+                {editingCaja && (
+                    <motion.div
+                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+                        onClick={e => { if (e.target === e.currentTarget) setEditingCaja(null); }}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95 }}
+                            className="bg-[#0d1b2a] border border-white/15 rounded-3xl w-full max-w-sm p-6 shadow-2xl"
+                        >
+                            <div className="flex items-center justify-between mb-4">
+                                <div>
+                                    <h3 className="font-syne text-xl font-bold text-white">Editar Cierre</h3>
+                                    <p className="text-xs text-clinical/40 mt-0.5 capitalize">{fmtDate(editingCaja.date)}</p>
+                                </div>
+                                <button type="button" title="Cerrar" onClick={() => setEditingCaja(null)} className="text-clinical/40 hover:text-white p-1.5 rounded-xl hover:bg-white/5 transition-colors">
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                            <form onSubmit={handleEditCierre} className="space-y-4">
+                                <div>
+                                    <label className="text-xs text-clinical/50 font-bold uppercase mb-1 block">
+                                        Efectivo contado al cierre ($)
+                                    </label>
+                                    <div className="relative">
+                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-clinical/40 font-bold">$</span>
+                                        <input
+                                            type="number" min="0" step="1"
+                                            value={editEfectivo}
+                                            onChange={e => setEditEfectivo(e.target.value)}
+                                            className="w-full bg-black/40 border border-white/10 rounded-xl pl-8 pr-4 py-3 text-white font-bold text-lg focus:border-electric outline-none transition-colors"
+                                            autoFocus
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-xs text-clinical/50 font-bold uppercase mb-1 block">Notas del cierre</label>
+                                    <textarea
+                                        value={editNotas}
+                                        onChange={e => setEditNotas(e.target.value)}
+                                        placeholder="Corrección o aclaración…"
+                                        rows={2}
+                                        className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:border-electric outline-none transition-colors resize-none"
+                                    />
+                                </div>
+                                <button
+                                    type="submit"
+                                    disabled={savingEdit}
+                                    className="w-full py-3.5 rounded-2xl bg-electric text-cobalt font-black flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
+                                >
+                                    {savingEdit ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Pencil className="w-5 h-5" /> Guardar Corrección</>}
                                 </button>
                             </form>
                         </motion.div>

@@ -3,10 +3,12 @@ import {
     DollarSign, Plus, CreditCard, Banknote, ArrowDownToLine,
     Bitcoin, CheckCircle2, Clock, ChevronDown, ChevronUp,
     Receipt, Wallet, TrendingUp, AlertCircle, X, Loader2,
+    Lock, ChevronRight, FileText,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useMarket } from '../../context/MarketContext';
 import { addTransaction, AccountType } from '../../lib/financeApi';
+import { addMovimiento } from '../../lib/cajaApi';
 import {
     PatientPayment, MetodoPago, TreatmentPlan,
 } from '../../lib/supabase';
@@ -87,6 +89,7 @@ export const PatientFinanzas: React.FC<PatientFinanzasProps> = ({
 
     // ── Expand history ───────────────────────────────────────────────────────
     const [showAll, setShowAll] = useState(false);
+    const [selectedPayment, setSelectedPayment] = useState<PatientPayment | null>(null);
 
     // ── Computed balances ────────────────────────────────────────────────────
     const activeItems = useMemo(
@@ -168,6 +171,19 @@ export const PatientFinanzas: React.FC<PatientFinanzasProps> = ({
 
         // Persist to patient record
         await onSavePayment(payment);
+
+        // Sync to Caja del Día (if open)
+        addMovimiento({
+            tipo: 'ingreso',
+            monto: montoNeto,
+            concepto: `${payment.concepto} · ${patientName}`,
+            metodoPago: metodo,
+            patientId: payment.receivedById,
+            patientName,
+            paymentId: payment.id,
+            operadorId: currentUserId,
+            operadorName: currentStaff?.nombres ?? 'Staff',
+        });
 
         // Also update global finance (caja / finanzas page)
         await addTransaction(
@@ -302,25 +318,62 @@ export const PatientFinanzas: React.FC<PatientFinanzasProps> = ({
                                     key={payment.id}
                                     initial={{ opacity: 0, y: 6 }}
                                     animate={{ opacity: 1, y: 0 }}
-                                    className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-4 py-3"
+                                    className="bg-white/5 border border-white/10 rounded-xl overflow-hidden"
                                 >
-                                    <div className="w-8 h-8 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center flex-shrink-0">
-                                        {METODO_ICONS[payment.metodoPago]}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-sm text-white font-bold truncate">{payment.concepto}</p>
-                                        <p className="text-xs text-clinical/40">
-                                            {fmtDate(payment.date)} · {METODO_LABELS[payment.metodoPago]}
-                                            {payment.cryptoType ? ` (${payment.cryptoType})` : ''}
-                                            {payment.receivedByName ? ` · Recibió: ${payment.receivedByName}` : ''}
-                                        </p>
-                                    </div>
-                                    <div className="text-right flex-shrink-0">
-                                        <p className="text-emerald-400 font-bold text-sm">{fmt(payment.monto)}</p>
-                                        {payment.receiptNumber && (
-                                            <p className="text-[10px] text-clinical/30">{payment.receiptNumber}</p>
+                                    <button
+                                        type="button"
+                                        onClick={() => setSelectedPayment(selectedPayment?.id === payment.id ? null : payment)}
+                                        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/5 transition-colors"
+                                    >
+                                        <div className="w-8 h-8 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center flex-shrink-0">
+                                            {METODO_ICONS[payment.metodoPago]}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm text-white font-bold truncate">{payment.concepto}</p>
+                                            <p className="text-xs text-clinical/40">
+                                                {fmtDate(payment.date)} · {METODO_LABELS[payment.metodoPago]}
+                                                {payment.cryptoType ? ` (${payment.cryptoType})` : ''}
+                                                {payment.notes && <span className="text-electric/50"> · 📝 Nota</span>}
+                                            </p>
+                                        </div>
+                                        <div className="text-right flex-shrink-0 flex items-center gap-2">
+                                            <div>
+                                                <p className="text-emerald-400 font-bold text-sm">{fmt(payment.monto)}</p>
+                                                {payment.receiptNumber && (
+                                                    <p className="text-[10px] text-clinical/30">{payment.receiptNumber}</p>
+                                                )}
+                                            </div>
+                                            <ChevronRight className={`w-3.5 h-3.5 text-clinical/30 transition-transform ${selectedPayment?.id === payment.id ? 'rotate-90' : ''}`} />
+                                        </div>
+                                    </button>
+
+                                    {/* Expanded detail row */}
+                                    <AnimatePresence>
+                                        {selectedPayment?.id === payment.id && (
+                                            <motion.div
+                                                initial={{ height: 0, opacity: 0 }}
+                                                animate={{ height: 'auto', opacity: 1 }}
+                                                exit={{ height: 0, opacity: 0 }}
+                                                className="overflow-hidden"
+                                            >
+                                                <div className="px-4 pb-3 pt-0 border-t border-white/10 space-y-2">
+                                                    <div className="flex flex-wrap gap-3 text-xs text-clinical/50 pt-2">
+                                                        <span>Recibió: <span className="text-white">{payment.receivedByName}</span></span>
+                                                        <span>Cuenta: <span className="text-white">{payment.cuentaDestino}</span></span>
+                                                        {payment.treatmentItemIds.length > 0 && (
+                                                            <span>Tratamientos: <span className="text-electric">{payment.treatmentItemIds.length}</span></span>
+                                                        )}
+                                                    </div>
+                                                    {payment.notes && (
+                                                        <div className="flex items-start gap-2 bg-white/5 rounded-lg px-3 py-2">
+                                                            <FileText className="w-3.5 h-3.5 text-electric/60 mt-0.5 flex-shrink-0" />
+                                                            <p className="text-xs text-clinical/70 leading-relaxed">{payment.notes}</p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </motion.div>
                                         )}
-                                    </div>
+                                    </AnimatePresence>
                                 </motion.div>
                             ))}
                         </div>
@@ -379,29 +432,38 @@ export const PatientFinanzas: React.FC<PatientFinanzasProps> = ({
                                             Tratamientos que cubre este cobro
                                         </label>
                                         <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
-                                            {activeItems.map(item => (
-                                                <label
-                                                    key={item.id}
-                                                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border cursor-pointer transition-all ${
-                                                        selectedItems.includes(item.id)
-                                                            ? 'border-electric/60 bg-electric/5 text-white'
-                                                            : 'border-white/10 bg-white/3 text-clinical/60 hover:border-white/20'
-                                                    }`}
-                                                >
-                                                    <input
-                                                        type="checkbox"
-                                                        className="accent-yellow-400"
-                                                        checked={selectedItems.includes(item.id)}
-                                                        onChange={() => handleToggleItem(item.id)}
-                                                    />
-                                                    <span className="flex-1 text-sm truncate">
-                                                        {item.toothNumber ? `D${item.toothNumber} · ` : ''}{item.name}
-                                                    </span>
-                                                    <span className="text-xs font-bold text-electric flex-shrink-0">
-                                                        {fmt(item.price - item.discount)}
-                                                    </span>
-                                                </label>
-                                            ))}
+                                            {activeItems.map(item => {
+                                                const alreadyCovered = coveredItemIds.has(item.id);
+                                                return (
+                                                    <label
+                                                        key={item.id}
+                                                        className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all ${
+                                                            alreadyCovered
+                                                                ? 'border-emerald-500/20 bg-emerald-500/5 text-emerald-400/60 cursor-not-allowed opacity-70'
+                                                                : selectedItems.includes(item.id)
+                                                                    ? 'border-electric/60 bg-electric/5 text-white cursor-pointer'
+                                                                    : 'border-white/10 bg-white/3 text-clinical/60 hover:border-white/20 cursor-pointer'
+                                                        }`}
+                                                    >
+                                                        {alreadyCovered
+                                                            ? <Lock className="w-3.5 h-3.5 text-emerald-400/60 flex-shrink-0" />
+                                                            : <input
+                                                                type="checkbox"
+                                                                className="accent-yellow-400"
+                                                                checked={selectedItems.includes(item.id)}
+                                                                onChange={() => handleToggleItem(item.id)}
+                                                                disabled={alreadyCovered}
+                                                            />
+                                                        }
+                                                        <span className="flex-1 text-sm truncate">
+                                                            {item.toothNumber ? `D${item.toothNumber} · ` : ''}{item.name}
+                                                        </span>
+                                                        <span className={`text-xs font-bold flex-shrink-0 ${alreadyCovered ? 'text-emerald-400/60 line-through' : 'text-electric'}`}>
+                                                            {alreadyCovered ? 'Pagado' : fmt(item.price - item.discount)}
+                                                        </span>
+                                                    </label>
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 )}

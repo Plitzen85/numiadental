@@ -67,36 +67,38 @@ function buildSystemPrompt(
     return lines.join('\n');
 }
 
-// ─── Anthropic fetch helper ────────────────────────────────────────────────────
+// ─── Google Gemini fetch helper ───────────────────────────────────────────────
 
-async function callClaude(
+async function callGemini(
     messages: Message[],
     systemPrompt: string,
     onChunk: (text: string) => void,
 ): Promise<void> {
-    const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
-    if (!apiKey) throw new Error('VITE_ANTHROPIC_API_KEY no configurada.');
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    if (!apiKey) throw new Error('VITE_GEMINI_API_KEY no configurada. Agrégala en .env y en Vercel.');
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': apiKey,
-            'anthropic-version': '2023-06-01',
-            'anthropic-dangerous-direct-browser-access': 'true',
-        },
-        body: JSON.stringify({
-            model: 'claude-sonnet-4-6',
-            max_tokens: 1024,
-            stream: true,
-            system: systemPrompt,
-            messages: messages.map(m => ({ role: m.role, content: m.content })),
-        }),
-    });
+    // Convert messages to Gemini content format (assistant → model)
+    const contents = messages.map(m => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content }],
+    }));
+
+    const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:streamGenerateContent?alt=sse&key=${apiKey}`,
+        {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+                contents,
+                generationConfig: { maxOutputTokens: 1024 },
+            }),
+        }
+    );
 
     if (!response.ok) {
         const err = await response.text();
-        throw new Error(`API error ${response.status}: ${err}`);
+        throw new Error(`Gemini API error ${response.status}: ${err}`);
     }
 
     const reader = response.body?.getReader();
@@ -109,13 +111,12 @@ async function callClaude(
         const chunk = decoder.decode(value);
         for (const line of chunk.split('\n')) {
             if (!line.startsWith('data: ')) continue;
-            const data = line.slice(6);
-            if (data === '[DONE]') continue;
+            const data = line.slice(6).trim();
+            if (!data || data === '[DONE]') continue;
             try {
                 const json = JSON.parse(data);
-                if (json.type === 'content_block_delta' && json.delta?.text) {
-                    onChunk(json.delta.text);
-                }
+                const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (text) onChunk(text);
             } catch {
                 // ignore parse errors
             }
@@ -176,7 +177,7 @@ export const AIAssistant: React.FC<AIAssistantProps> = ({
         setMessages(prev => [...prev, assistantMsg]);
 
         try {
-            await callClaude(newMessages, systemPrompt, (chunk) => {
+            await callGemini(newMessages, systemPrompt, (chunk) => {
                 setMessages(prev => {
                     const last = prev[prev.length - 1];
                     if (last.role !== 'assistant') return prev;
@@ -218,7 +219,7 @@ export const AIAssistant: React.FC<AIAssistantProps> = ({
                             </div>
                             <div>
                                 <h3 className="font-syne font-bold text-white text-sm">Asistente Clínico IA</h3>
-                                <p className="text-[10px] text-clinical/40">{patientName} · Claude AI</p>
+                                <p className="text-[10px] text-clinical/40">{patientName} · Gemini AI</p>
                             </div>
                         </div>
                         <button type="button" title="Cerrar" onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/10 text-clinical/40 hover:text-white transition-colors">

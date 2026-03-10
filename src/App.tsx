@@ -17,6 +17,7 @@ import { ClinicDirectory } from './pages/ClinicDirectory';
 import { Inventory } from './pages/Inventory';
 import { CatalogProducts } from './pages/CatalogProducts';
 import { Caja } from './pages/Caja';
+import { Proveedores } from './pages/Proveedores';
 import { Unauthorized } from './pages/Unauthorized';
 import { PermissionGuard } from './components/shared/PermissionGuard';
 
@@ -58,6 +59,7 @@ function AppContent() {
                     {/* Security fallback */}
                     <div className="mt-8">
                         <button
+                            type="button"
                             onClick={() => window.location.reload()}
                             className="text-electric/50 text-[9px] uppercase tracking-widest border border-electric/20 px-3 py-1 rounded-lg hover:bg-electric/5 transition-all"
                         >
@@ -92,6 +94,7 @@ function AppContent() {
                 <Route path="/catalogo" element={<PermissionGuard module="catalogo"><CatalogProducts /></PermissionGuard>} />
                 <Route path="/settings" element={<PermissionGuard module="settings"><Settings /></PermissionGuard>} />
                 <Route path="/finanzas" element={<PermissionGuard module="finanzas"><Finances /></PermissionGuard>} />
+                <Route path="/proveedores" element={<PermissionGuard module="proveedores"><Proveedores /></PermissionGuard>} />
                 <Route path="/caja" element={<PermissionGuard module="finanzas"><Caja /></PermissionGuard>} />
                 <Route path="/reportes" element={<PermissionGuard module="reportes"><Reports /></PermissionGuard>} />
                 <Route path="/unauthorized" element={<Unauthorized />} />

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LayoutDashboard, Radar, Megaphone, Plane, Settings, LogOut, User as UserIcon, Landmark, FileBarChart, Calendar, Hospital, PackageSearch, Users, Tag, Vault } from 'lucide-react';
+import { LayoutDashboard, Radar, Megaphone, Plane, Settings, LogOut, User as UserIcon, Landmark, FileBarChart, Calendar, Hospital, PackageSearch, Users, Tag, Vault, Truck } from 'lucide-react';
 import { useMarket, ModulePermissions } from '../../context/MarketContext';
 import { useAuth } from '../../context/AuthContext';
 
@@ -18,6 +18,7 @@ const allNavItems: { id: string; label: string; icon: React.ElementType; path: s
     { id: 'catalogo', label: 'Catálogo de Productos', icon: Tag, path: '/catalogo', module: 'catalogo' },
     { id: 'campanas', label: 'Campañas', icon: Megaphone, path: '/campaigns', module: 'campanas' },
     { id: 'turismo', label: 'Turismo Dental', icon: Plane, path: '/tourism', module: 'turismo' },
+    { id: 'proveedores', label: 'Proveedores', icon: Truck, path: '/proveedores', module: 'proveedores' },
     { id: 'caja', label: 'Caja del Día', icon: Vault, path: '/caja', module: 'finanzas' },
     { id: 'finanzas', label: 'Finanzas', icon: Landmark, path: '/finanzas', module: 'finanzas' },
     { id: 'reportes', label: 'Informes', icon: FileBarChart, path: '/reportes', module: 'reportes' },
