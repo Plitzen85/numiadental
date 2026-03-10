@@ -124,21 +124,30 @@ export const TreatmentPipeline: React.FC<TreatmentPipelineProps> = ({ plan, onSa
     const createdAtDate = new Date(plan.createdAt ?? new Date().toISOString());
     const validUntilDate = new Date(new Date(createdAtDate).setDate(createdAtDate.getDate() + 15));
     const fmtDate = (d: Date) => d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
+    const now = new Date();
+    const daysLeft = Math.ceil((validUntilDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    const isExpired = daysLeft < 0;
+    const isExpiringSoon = !isExpired && daysLeft <= 3;
 
     return (
         <div className="space-y-5">
 
             {/* ── Validity + Print header ──────────────────────────────────── */}
-            <div className="flex items-center justify-between bg-white/4 border border-white/10 rounded-xl px-4 py-2.5">
+            <div className={`flex items-center justify-between border rounded-xl px-4 py-2.5 ${isExpired ? 'bg-red-500/10 border-red-500/30' : isExpiringSoon ? 'bg-amber-500/10 border-amber-500/30' : 'bg-white/4 border-white/10'}`}>
                 <div className="flex items-center gap-4 text-xs text-clinical/60">
                     <span className="flex items-center gap-1.5">
-                        <CalendarClock className="w-3.5 h-3.5 text-electric/60" />
+                        <CalendarClock className={`w-3.5 h-3.5 ${isExpired ? 'text-red-400' : 'text-electric/60'}`} />
                         Emisión: <span className="text-clinical font-semibold">{fmtDate(createdAtDate)}</span>
                     </span>
                     <span className="text-white/20">|</span>
-                    <span className="flex items-center gap-1.5 text-amber-400/80">
+                    <span className={`flex items-center gap-1.5 ${isExpired ? 'text-red-400' : isExpiringSoon ? 'text-amber-400' : 'text-amber-400/80'}`}>
                         Válido hasta: <span className="font-semibold">{fmtDate(validUntilDate)}</span>
-                        <span className="text-[9px] text-clinical/30">(15 días)</span>
+                        {isExpired
+                            ? <span className="text-[9px] font-bold bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded">EXPIRADO</span>
+                            : isExpiringSoon
+                                ? <span className="text-[9px] font-bold bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded">Vence en {daysLeft}d</span>
+                                : <span className="text-[9px] text-clinical/30">(15 días)</span>
+                        }
                     </span>
                 </div>
                 {patient && (

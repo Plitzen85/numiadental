@@ -6,6 +6,7 @@ import {
     PatientVisit, PatientFile, PrescriptionMedication, VisitStatus,
     uploadPatientFile, deletePatientFile,
 } from '../../lib/supabase';
+import { printPrescription } from '../../utils/patientPrint';
 
 // ─── Status config ────────────────────────────────────────────────────────────
 const VISIT_STATUS_CONFIG: Record<VisitStatus, { label: string; dot: string }> = {
@@ -22,11 +23,13 @@ interface VisitRecordProps {
     onSave: (updated: PatientVisit) => Promise<void>;
     canDelete: boolean;
     onDelete: () => void;
+    patientName?: string;
+    clinicName?: string;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export const VisitRecord: React.FC<VisitRecordProps> = ({
-    visit, patientId, onSave, canDelete, onDelete,
+    visit, patientId, onSave, canDelete, onDelete, patientName = 'Paciente', clinicName = 'Nümia Dental',
 }) => {
     const [local, setLocal] = useState<PatientVisit>(visit);
     const [isSaving, setIsSaving] = useState(false);
@@ -258,7 +261,11 @@ export const VisitRecord: React.FC<VisitRecordProps> = ({
                             className="w-full text-sm text-gray-700 bg-gray-50 rounded-xl px-4 py-3 placeholder:text-gray-300 outline-none resize-none border border-gray-100 mb-4"
                         />
 
-                        <button className="bg-black hover:bg-black/80 text-white w-full text-sm font-bold py-3 rounded-xl transition-colors flex items-center justify-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => printPrescription(patientName, local, clinicName)}
+                            className="bg-black hover:bg-black/80 text-white w-full text-sm font-bold py-3 rounded-xl transition-colors flex items-center justify-center gap-2"
+                        >
                             <FileText className="w-4 h-4" /> Imprimir Receta (PDF)
                         </button>
                     </div>

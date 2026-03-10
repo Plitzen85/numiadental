@@ -558,6 +558,8 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patie
                                                 onSave={handleSaveVisit}
                                                 canDelete={selectedVisit.doctorId === currentUserId || !!(currentDoctor as any)?.isMasterAdmin}
                                                 onDelete={() => handleDeleteVisit(selectedVisit.id)}
+                                                patientName={patient ? `${patient.nombres} ${patient.apellidos}` : patientName}
+                                                clinicName={clinicProfile?.nombre ?? 'Nümia Dental'}
                                             />
                                         ) : (
                                             <div className="h-full flex flex-col items-center justify-center text-clinical/30">

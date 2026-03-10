@@ -1,5 +1,5 @@
 import { Patient } from '../context/MarketContext';
-import { PatientMedicalHistory, TreatmentPlan } from '../lib/supabase';
+import { PatientMedicalHistory, TreatmentPlan, PatientVisit } from '../lib/supabase';
 
 // ─── Branding helpers ─────────────────────────────────────────────────────────
 
@@ -447,6 +447,132 @@ export function printConsentDocument(
     setTimeout(() => { win.print(); }, 600);
 }
 
+// ─── Prescription / Receta print ─────────────────────────────────────────────
+
+export function printPrescription(
+    patientName: string,
+    visit: PatientVisit,
+    clinicName = 'Nümia Dental',
+) {
+    const rx = visit.prescription;
+    if (!rx || (rx.medications.length === 0 && !rx.freeText?.trim())) {
+        alert('Esta consulta no tiene receta registrada.'); return;
+    }
+
+    const branding = getClinicBranding();
+    const brandColor = branding?.colorPrimario ?? '#00d4ff';
+
+    // Look up doctor's cédula from staff
+    const getDoctorCed = (): string => {
+        try {
+            const raw = localStorage.getItem('clinicProfile');
+            if (!raw) return '';
+            const staff: { nombres?: string; cedProfesional?: string }[] = JSON.parse(raw)?.staff ?? [];
+            return staff.find(s => s.nombres === visit.doctorName)?.cedProfesional ?? '';
+        } catch { return ''; }
+    };
+
+    const doctorCed = getDoctorCed();
+    const doctorLine = visit.doctorName
+        ? `Dr(a). ${visit.doctorName}${doctorCed ? ` — Céd. Prof. ${doctorCed}` : ''}`
+        : 'Médico Tratante';
+
+    const visitDate = new Date(visit.date).toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' });
+
+    const medsHtml = rx.medications.map((med, i) => `
+        <div class="med-item">
+            <div class="med-num">${i + 1}</div>
+            <div class="med-body">
+                <div class="med-name">${med.name || '—'}</div>
+                <div class="med-details">
+                    ${med.dose ? `<span><strong>Dosis:</strong> ${med.dose}</span>` : ''}
+                    ${med.frequency ? `<span><strong>Frecuencia:</strong> ${med.frequency}</span>` : ''}
+                    ${med.duration ? `<span><strong>Duración:</strong> ${med.duration}</span>` : ''}
+                </div>
+            </div>
+        </div>`).join('');
+
+    const rxHtml = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Receta — ${patientName}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Helvetica Neue',Arial,sans-serif;font-size:12px;color:#1a1a2e;line-height:1.6;background:#fff}
+    .page{max-width:720px;margin:0 auto;padding:40px 36px}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid ${brandColor};padding-bottom:20px;margin-bottom:28px}
+    .logo{font-size:26px;font-weight:900;letter-spacing:3px;color:${brandColor}}
+    .logo-sub{font-size:10px;color:#888;letter-spacing:1px;text-transform:uppercase;margin-top:2px}
+    .meta{text-align:right;font-size:11px;color:#666;line-height:1.8}
+    .meta strong{color:#1a1a2e;font-size:13px}
+    .rx-symbol{font-size:64px;font-weight:900;color:${brandColor};line-height:1;margin-bottom:8px;opacity:0.15;position:absolute;right:36px;top:100px}
+    .patient-band{background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:12px 16px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:center}
+    .patient-name{font-size:15px;font-weight:800;color:#111827}
+    .patient-date{font-size:11px;color:#6b7280}
+    .section-title{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:${brandColor};padding-bottom:6px;border-bottom:1px solid #e5e7eb;margin-bottom:16px}
+    .rx-big{font-size:28px;font-weight:900;color:${brandColor};margin-bottom:20px;letter-spacing:2px}
+    .med-item{display:flex;gap:12px;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid #f3f4f6}
+    .med-item:last-child{border-bottom:none}
+    .med-num{width:24px;height:24px;background:${brandColor};color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:2px}
+    .med-body{flex:1}
+    .med-name{font-size:14px;font-weight:800;color:#111827;margin-bottom:4px}
+    .med-details{display:flex;flex-wrap:wrap;gap:12px;font-size:11px;color:#6b7280}
+    .med-details strong{color:#374151}
+    .free-text{background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:14px 16px;margin-top:16px;font-size:12px;color:#78350f;white-space:pre-wrap;line-height:1.7}
+    .free-text-label{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:#d97706;margin-bottom:6px}
+    .sig-block{margin-top:48px;text-align:right}
+    .sig-line{display:inline-block;border-top:1px solid #374151;padding-top:8px;font-size:11px;color:#374151;font-weight:700;min-width:200px;text-align:center}
+    .footer{margin-top:36px;padding-top:14px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;font-size:9px;color:#9ca3af}
+    @media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}@page{size:letter;margin:15mm}}
+  </style>
+</head>
+<body><div class="page">
+  <div class="rx-symbol">℞</div>
+  <div class="header">
+    <div>${buildBrandedHeader(clinicName, branding)}</div>
+    <div class="meta">
+      <strong>RECETA MÉDICA</strong><br>
+      Fecha: ${visitDate}<br>
+      Motivo: ${visit.chiefComplaint || '—'}
+    </div>
+  </div>
+
+  <div class="patient-band">
+    <div>
+      <div class="patient-name">${patientName}</div>
+      <div class="patient-date">Consulta: ${visitDate}</div>
+    </div>
+    <div style="font-size:10px;color:#9ca3af;text-align:right">
+      ${visit.diagnosis ? `Dx: ${visit.diagnosis}` : ''}
+    </div>
+  </div>
+
+  <div class="rx-big">℞</div>
+
+  ${medsHtml}
+
+  ${rx.freeText?.trim() ? `
+  <div class="free-text">
+    <div class="free-text-label">Indicaciones especiales</div>
+    ${rx.freeText}
+  </div>` : ''}
+
+  <div class="sig-block">
+    <div class="sig-line">${doctorLine}</div>
+  </div>
+
+  <div class="footer">${buildBrandedFooter(clinicName, branding)}</div>
+</div></body></html>`;
+
+    const rxWin = window.open('', '_blank', 'width=800,height=700');
+    if (!rxWin) { alert('Permite ventanas emergentes para imprimir.'); return; }
+    rxWin.document.write(rxHtml);
+    rxWin.document.close();
+    rxWin.focus();
+    setTimeout(() => { rxWin.print(); }, 600);
+}
+
 // ─── Treatment plan / Presupuesto print ───────────────────────────────────────
 
 export function printTreatmentPlan(
@@ -500,7 +626,7 @@ export function printTreatmentPlan(
         </tr>`;
     }).join('');
 
-    // Look up doctor's personal cédula from staff list in localStorage
+    // Look up doctor cédulas from staff list in localStorage
     const getStaffCed = (name: string): string => {
         try {
             const raw = localStorage.getItem('clinicProfile');
@@ -510,18 +636,18 @@ export function printTreatmentPlan(
         } catch { return ''; }
     };
 
-    // Use the doctor assigned to the pending items (most frequent), fallback to medicoResponsable
-    const doctorCounts = pendingItems.reduce<Record<string, number>>((acc, i) => {
-        if (i.doctorName) acc[i.doctorName] = (acc[i.doctorName] ?? 0) + 1;
-        return acc;
-    }, {});
-    const itemDoctor = Object.entries(doctorCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
-    const itemDoctorCed = itemDoctor ? getStaffCed(itemDoctor) : '';
-    const doctorSig = itemDoctor
-        ? `Dr(a). ${itemDoctor}${itemDoctorCed ? ` — Céd. ${itemDoctorCed}` : ''}`
-        : branding?.medicoResponsable
-            ? `Dr(a). ${branding.medicoResponsable}${branding.cedProfesional ? ` — Céd. ${branding.cedProfesional}` : ''}`
-            : 'Médico Tratante';
+    // Collect unique doctors from pending items (preserving first-seen order)
+    const uniqueDoctors = [...new Set(pendingItems.map(i => i.doctorName).filter(Boolean))] as string[];
+    // Fallback to medicoResponsable if no items have a doctor assigned
+    const fallbackDoc = branding?.medicoResponsable
+        ? `Dr(a). ${branding.medicoResponsable}${branding.cedProfesional ? ` — Céd. ${branding.cedProfesional}` : ''}`
+        : 'Médico Tratante';
+    const doctorSigs: string[] = uniqueDoctors.length > 0
+        ? uniqueDoctors.map(name => {
+            const ced = getStaffCed(name);
+            return `Dr(a). ${name}${ced ? ` — Céd. ${ced}` : ''}`;
+        })
+        : [fallbackDoc];
 
     const presupHtml = `<!DOCTYPE html>
 <html lang="es">
@@ -623,7 +749,7 @@ export function printTreatmentPlan(
 
   <div class="sig-block">
     <div class="sig"><div class="sig-line">Firma del Paciente o Tutor</div></div>
-    <div class="sig"><div class="sig-line">${doctorSig}</div></div>
+    ${doctorSigs.map(s => `<div class="sig"><div class="sig-line">${s}</div></div>`).join('')}
   </div>
 
   <div class="footer">${buildBrandedFooter(clinicName, branding)}</div>
