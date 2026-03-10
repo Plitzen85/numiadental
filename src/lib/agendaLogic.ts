@@ -12,6 +12,7 @@ export interface AppointmentType {
     isGoogleCalendarEvent?: boolean;
     linkedPatientId?: string;    // patientId matched from our DB (via email)
     attendeeEmail?: string;      // email from gcal event attendees
+    isMinorPatient?: boolean;    // true when gcal description signals a minor/guardian scenario
 }
 
 const MAX_CLINIC_UNITS = 3;

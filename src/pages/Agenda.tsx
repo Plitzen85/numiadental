@@ -99,9 +99,10 @@ export const Agenda: React.FC = () => {
         );
 
         // Match gcal attendee emails to existing patients (no silent auto-creation)
+        // Skip matching for minor/guardian scenarios — the email belongs to the parent, not the patient
         const currentPatients = patientsRef.current;
         const enriched = results.flat().map(appt => {
-            if (!appt.attendeeEmail) return appt;
+            if (!appt.attendeeEmail || appt.isMinorPatient) return appt;
             const email = appt.attendeeEmail.toLowerCase();
             const found = currentPatients.find(p => p.email?.toLowerCase() === email);
             return found ? { ...appt, linkedPatientId: found.id } : appt;
@@ -759,6 +760,13 @@ export const Agenda: React.FC = () => {
                                 <button
                                     onClick={() => {
                                         setApptActionMenu(null);
+                                        // 1. Priority: use email-matched linkedPatientId from gcal sync
+                                        if (apptActionMenu.linkedPatientId) {
+                                            setSelectedPatientId(apptActionMenu.linkedPatientId);
+                                            setIsPatientViewOpen(true);
+                                            return;
+                                        }
+                                        // 2. Fallback: name-based search (local appointments)
                                         const firstName = apptActionMenu.patientName.split(' ')[0].toLowerCase();
                                         const found = patients.find(p =>
                                             p.nombres.toLowerCase().includes(firstName) ||
@@ -768,8 +776,9 @@ export const Agenda: React.FC = () => {
                                             setSelectedPatientId(found.id);
                                             setIsPatientViewOpen(true);
                                         } else {
+                                            // 3. No match: open new patient form (empty — staff fills manually)
                                             setEditPatientId(undefined);
-                                            setNewPatientInitialName(apptActionMenu.patientName);
+                                            setNewPatientInitialName(undefined);
                                             setIsPatientFormOpen(true);
                                         }
                                     }}

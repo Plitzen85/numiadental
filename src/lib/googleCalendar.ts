@@ -391,6 +391,10 @@ export function gcalEventToAppointment(event: GCalEvent, doctorId: string): Appo
     // Skip the calendar owner (self/organizer) to get the actual patient's email
     const attendeeEmail = event.attendees?.find(a => !a.self && !a.organizer)?.email;
 
+    // Detect guardian/minor scenario: booking form may include keywords in description
+    const desc = (event.description ?? '').toLowerCase();
+    const isMinorPatient = desc.includes('menor de edad') || desc.includes('es menor') || desc.includes('acompañante') || desc.includes('tutor');
+
     return {
         id: `gcal-${event.id}`,
         patientName: event.summary ?? 'Evento de Google Calendar',
@@ -402,5 +406,6 @@ export function gcalEventToAppointment(event: GCalEvent, doctorId: string): Appo
         googleCalendarEventId: event.id,
         isGoogleCalendarEvent: true,
         attendeeEmail,
+        isMinorPatient: isMinorPatient || undefined,
     };
 }
