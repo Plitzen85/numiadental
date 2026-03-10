@@ -429,44 +429,62 @@ export const Tourism: React.FC = () => {
                         <div className="space-y-4">
                             <div>
                                 <label className="text-xs text-clinical/60 block mb-1">Tratamiento Principal</label>
-                                <select title="Opciones" value={params.tratamiento} onChange={e => setParams({ ...params, tratamiento: e.target.value })} className="w-full bg-cobalt border border-white/20 rounded-lg px-4 py-2 text-clinical focus:outline-none focus:border-electric appearance-none">
-                                    <optgroup label="Estética y Restauración">
-                                        <option>Implantes All-on-4</option>
-                                        <option>Implantes All-on-6</option>
-                                        <option>Diseño de Sonrisa (Carillas)</option>
-                                        <option>Carillas de Porcelana (Set 6)</option>
-                                        <option>Carillas de Porcelana (Set 12)</option>
-                                        <option>Rehabilitación Oral Completa</option>
-                                        <option>Zirconia Bridges</option>
-                                        <option>Coronas de E-Max</option>
-                                        <option>Blanqueamiento Láser Pro</option>
-                                    </optgroup>
-                                    <optgroup label="Ortodoncia">
-                                        <option>Ortodoncia Invisible (Invisalign)</option>
-                                        <option>Brackets de Zafiro</option>
-                                        <option>Brackets Metálicos Pro</option>
-                                        <option>Ortodoncia Lingual</option>
-                                        <option>Retenedores Estéticos</option>
-                                    </optgroup>
-                                    <optgroup label="Cirugía y Otros">
-                                        <option>Elevación de Seno Maxilar</option>
-                                        <option>Injerto de Hueso Dental</option>
-                                        <option>Extracción Cordales (4 Muelas)</option>
-                                        <option>Gingivectomía Estética</option>
-                                        <option>Implante Unitario Titanio</option>
-                                        <option>Cirugía de Encía (Injerto)</option>
-                                        <option>Frenectomía Láser</option>
-                                        <option>Endodoncia Multi-conducto</option>
-                                        <option>Endodoncia + Corona Zirconia</option>
-                                        <option>Limpieza Ultrasónica VIP</option>
-                                        <option>Prótesis Total Removible</option>
-                                        <option>Incrustación Onlay/Inlay</option>
-                                        <option>Resinas Estéticas (Set 4)</option>
-                                        <option>Tratamiento Periodontal Profundo</option>
-                                        <option>Férula de Miorrelajación (Bruxismo)</option>
-                                        <option>Poste de Fibra de Vidrio</option>
-                                        <option>Prótesis Parcial Flexible</option>
-                                    </optgroup>
+                                <select title="Opciones" value={params.tratamiento} onChange={e => {
+                                    const name = e.target.value;
+                                    const matchedExtra = clinicProfile?.catalogoExtra?.find(t => t.name === name);
+                                    setParams(prev => ({
+                                        ...prev,
+                                        tratamiento: name,
+                                        ...(matchedExtra && matchedExtra.price > 0 ? { costoTratamiento: matchedExtra.price } : {}),
+                                    }));
+                                }} className="w-full bg-cobalt border border-white/20 rounded-lg px-4 py-2 text-clinical focus:outline-none focus:border-electric appearance-none">
+                                    {clinicProfile?.catalogoExtra && clinicProfile.catalogoExtra.length > 0 ? (
+                                        <optgroup label="Tratamientos de la Clínica">
+                                            {clinicProfile.catalogoExtra.filter(t => t.name.trim()).map(t => (
+                                                <option key={t.id} value={t.name}>{t.name}</option>
+                                            ))}
+                                        </optgroup>
+                                    ) : (
+                                        <>
+                                            <optgroup label="Estética y Restauración">
+                                                <option>Implantes All-on-4</option>
+                                                <option>Implantes All-on-6</option>
+                                                <option>Diseño de Sonrisa (Carillas)</option>
+                                                <option>Carillas de Porcelana (Set 6)</option>
+                                                <option>Carillas de Porcelana (Set 12)</option>
+                                                <option>Rehabilitación Oral Completa</option>
+                                                <option>Zirconia Bridges</option>
+                                                <option>Coronas de E-Max</option>
+                                                <option>Blanqueamiento Láser Pro</option>
+                                            </optgroup>
+                                            <optgroup label="Ortodoncia">
+                                                <option>Ortodoncia Invisible (Invisalign)</option>
+                                                <option>Brackets de Zafiro</option>
+                                                <option>Brackets Metálicos Pro</option>
+                                                <option>Ortodoncia Lingual</option>
+                                                <option>Retenedores Estéticos</option>
+                                            </optgroup>
+                                            <optgroup label="Cirugía y Otros">
+                                                <option>Elevación de Seno Maxilar</option>
+                                                <option>Injerto de Hueso Dental</option>
+                                                <option>Extracción Cordales (4 Muelas)</option>
+                                                <option>Gingivectomía Estética</option>
+                                                <option>Implante Unitario Titanio</option>
+                                                <option>Cirugía de Encía (Injerto)</option>
+                                                <option>Frenectomía Láser</option>
+                                                <option>Endodoncia Multi-conducto</option>
+                                                <option>Endodoncia + Corona Zirconia</option>
+                                                <option>Limpieza Ultrasónica VIP</option>
+                                                <option>Prótesis Total Removible</option>
+                                                <option>Incrustación Onlay/Inlay</option>
+                                                <option>Resinas Estéticas (Set 4)</option>
+                                                <option>Tratamiento Periodontal Profundo</option>
+                                                <option>Férula de Miorrelajación (Bruxismo)</option>
+                                                <option>Poste de Fibra de Vidrio</option>
+                                                <option>Prótesis Parcial Flexible</option>
+                                            </optgroup>
+                                        </>
+                                    )}
                                 </select>
                             </div>
 

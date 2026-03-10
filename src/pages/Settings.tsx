@@ -16,6 +16,7 @@ const MODULE_LABELS: { key: keyof ModulePermissions; label: string }[] = [
     { key: 'agenda', label: 'Agenda & CRM' },
     { key: 'clinica', label: 'Clínica' },
     { key: 'inventario', label: 'Inventario' },
+    { key: 'catalogo', label: 'Catálogo de Productos' },
     { key: 'campanas', label: 'Campañas' },
     { key: 'turismo', label: 'Turismo Dental' },
     { key: 'finanzas', label: 'Finanzas' },
