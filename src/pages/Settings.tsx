@@ -51,7 +51,8 @@ export const Settings: React.FC = () => {
             facebook: clinicProfile?.redesSociales?.facebook || '',
             instagram: clinicProfile?.redesSociales?.instagram || '',
             whatsapp: clinicProfile?.redesSociales?.whatsapp || ''
-        }
+        },
+        whatsappTemplate: clinicProfile?.whatsappTemplate || '',
     });
 
     const [newService, setNewService] = useState({ category: 'Preventivo', name: '', price: '' });
@@ -439,6 +440,22 @@ export const Settings: React.FC = () => {
                                     </div>
                                 ))}
                             </div>
+                        </div>
+
+                        {/* WhatsApp reminder template */}
+                        <div className="pt-4 border-t border-white/10 space-y-3">
+                            <div>
+                                <h3 className="text-xs font-bold text-green-400 uppercase tracking-widest">Recordatorio WhatsApp</h3>
+                                <p className="text-[10px] text-clinical/40 mt-0.5">Variables disponibles: <span className="text-electric font-mono">{'{{nombre}} {{clinica}} {{fecha}} {{hora}} {{procedimiento}}'}</span></p>
+                            </div>
+                            <textarea
+                                title="Template de recordatorio WhatsApp"
+                                rows={3}
+                                value={formData.whatsappTemplate || ''}
+                                onChange={e => setFormData({ ...formData, whatsappTemplate: e.target.value })}
+                                placeholder="Hola {{nombre}}, te recordamos tu cita en {{clinica}} el día {{fecha}} a las {{hora}} para {{procedimiento}}. ¡Te esperamos!"
+                                className="w-full bg-cobalt border border-white/20 rounded-lg px-4 py-2 text-clinical text-sm focus:outline-none focus:border-green-400 resize-none"
+                            />
                         </div>
                     </div>
 

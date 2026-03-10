@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Calendar as CalendarIcon, UserPlus, Sparkles, RefreshCcw, CheckCircle2, Bot, Wifi, DoorOpen, Armchair, CreditCard, Flag, LayoutGrid, Stethoscope } from 'lucide-react';
+import { Calendar as CalendarIcon, UserPlus, Sparkles, RefreshCcw, CheckCircle2, Bot, Wifi, DoorOpen, Armchair, CreditCard, Flag, LayoutGrid, Stethoscope, MessageCircle } from 'lucide-react';
 import { useMarket, isDoctor } from '../context/MarketContext';
 import { AppointmentType, getActiveUnitsAtTime, parseTimeToMinutes } from '../lib/agendaLogic';
 import {
@@ -314,6 +314,29 @@ export const Agenda: React.FC = () => {
             setPatientProfileTab('finanzas');
             setIsPatientViewOpen(true);
         }
+    };
+
+    const sendWhatsAppReminder = (appt: AppointmentType, dateStr: string) => {
+        const patient = appt.linkedPatientId
+            ? patients.find(p => p.id === appt.linkedPatientId)
+            : patients.find(p =>
+                `${p.nombres} ${p.apellidos}`.toLowerCase() === appt.patientName.toLowerCase() ||
+                appt.patientName.toLowerCase().includes(p.nombres.toLowerCase())
+            );
+        const phone = patient?.telefono?.replace(/\D/g, '');
+        if (!phone) {
+            alert('Este paciente no tiene número de teléfono registrado.');
+            return;
+        }
+        const template = clinicProfile?.whatsappTemplate
+            || 'Hola {{nombre}}, te recordamos tu cita en {{clinica}} el día {{fecha}} a las {{hora}} para {{procedimiento}}. ¡Te esperamos!';
+        const message = template
+            .replace('{{nombre}}', appt.patientName)
+            .replace('{{clinica}}', clinicProfile?.nombre ?? 'la clínica')
+            .replace('{{fecha}}', dateStr)
+            .replace('{{hora}}', appt.startTime)
+            .replace('{{procedimiento}}', appt.procedure);
+        window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank');
     };
 
     // Status pipeline config
@@ -1038,6 +1061,23 @@ export const Agenda: React.FC = () => {
                                             <div className="text-clinical/40 text-xs">Cambiar hora, doctor, tratamiento</div>
                                         </div>
                                     </button>
+
+                                    {/* WhatsApp reminder */}
+                                    {apptActionMenu.status !== 'cancelled' && (
+                                        <button
+                                            type="button"
+                                            onClick={() => { sendWhatsAppReminder(apptActionMenu, formattedDateString); setApptActionMenu(null); }}
+                                            className="w-full flex items-center gap-3 p-4 rounded-xl bg-white/5 border border-white/10 hover:bg-green-500/10 hover:border-green-500/20 transition-colors text-left"
+                                        >
+                                            <div className="w-9 h-9 rounded-lg bg-green-500/10 border border-green-500/20 flex items-center justify-center shrink-0">
+                                                <MessageCircle className="w-5 h-5 text-green-400" />
+                                            </div>
+                                            <div>
+                                                <div className="font-bold text-white text-sm">Recordatorio WhatsApp</div>
+                                                <div className="text-clinical/40 text-xs">Enviar mensaje de confirmación</div>
+                                            </div>
+                                        </button>
+                                    )}
                                 </div>
                             )}
 

@@ -135,6 +135,7 @@ export interface ClinicProfile {
     proveedores?: DirectoryEntity[];
     aseguradoras?: DirectoryEntity[];
     patients?: Patient[]; // Persisted patient list
+    whatsappTemplate?: string; // Configurable reminder template
 }
 
 export interface Competitor {
