@@ -8,7 +8,6 @@ import {
     gcalEventToAppointment,
     getConnectedDoctorIds,
     getAuthorizedDoctorIds,
-    getStoredToken,
     silentReconnect,
     deleteCalendarEvent,
     createCalendarEvent,
@@ -131,11 +130,7 @@ export const Agenda: React.FC = () => {
             // GIS reissues the token silently (no popup) if the user is still signed in to Google.
             const authorizedIds = getAuthorizedDoctorIds();
             if (authorizedIds.length > 0) {
-                await Promise.all(authorizedIds.map(id => {
-                    const storedEmail = getStoredToken(id)?.email
-                        ?? doctors.find(d => d.id === id)?.email;
-                    return silentReconnect(id, storedEmail);
-                }));
+                await Promise.all(authorizedIds.map(id => silentReconnect(id)));
             }
             setConnectedCount(getConnectedDoctorIds().length);
             await syncGoogleCalendar();
