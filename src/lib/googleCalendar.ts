@@ -33,7 +33,7 @@ export interface GCalEvent {
     end: { dateTime?: string; date?: string; timeZone?: string };
     status?: string;
     htmlLink?: string;
-    attendees?: { email: string; displayName?: string; self?: boolean }[];
+    attendees?: { email: string; displayName?: string; self?: boolean; organizer?: boolean }[];
 }
 
 // ---------------------------------------------------------------------------
@@ -388,8 +388,8 @@ export function gcalEventToAppointment(event: GCalEvent, doctorId: string): Appo
         `${start.getHours().toString().padStart(2, '0')}:` +
         `${start.getMinutes().toString().padStart(2, '0')}`;
 
-    // Skip the calendar owner (self: true) to find the actual patient's email
-    const attendeeEmail = event.attendees?.find(a => !a.self)?.email;
+    // Skip the calendar owner (self/organizer) to get the actual patient's email
+    const attendeeEmail = event.attendees?.find(a => !a.self && !a.organizer)?.email;
 
     return {
         id: `gcal-${event.id}`,

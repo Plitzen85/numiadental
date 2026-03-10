@@ -10,6 +10,9 @@ import {
     getAuthorizedDoctorIds,
     silentReconnect,
     deleteCalendarEvent,
+    createCalendarEvent,
+    updateCalendarEvent,
+    isConnected,
 } from '../lib/googleCalendar';
 import { NewAppointmentModal } from '../components/NewAppointmentModal';
 import { PatientProfileForm } from '../components/PatientProfileForm';
@@ -51,6 +54,10 @@ export const Agenda: React.FC = () => {
     const [apptActionMenu, setApptActionMenu] = useState<AppointmentType | null>(null);
     const [editingAppt, setEditingAppt] = useState<AppointmentType | undefined>(undefined);
     const [activeTab, setActiveTab] = useState<'calendario' | 'pacientes'>('calendario');
+
+    // Drag-and-drop state
+    const draggingApptRef = useRef<AppointmentType | null>(null);
+    const [dragOverSlot, setDragOverSlot] = useState<{ time: string; doctorId: string } | null>(null);
 
     const today = new Date();
     const [selectedDate, setSelectedDate] = useState<number>(today.getDate());
@@ -185,6 +192,57 @@ export const Agenda: React.FC = () => {
         }
         setCancelConfirmAppt(null);
     };
+
+    const handleApptDrop = useCallback(async (appt: AppointmentType, newTime: string, newDoctorId: string) => {
+        if (appt.startTime === newTime && appt.doctorId === newDoctorId) return;
+
+        const eventDate = new Date(currentYear, currentMonth, selectedDate);
+        let newGcalEventId = appt.googleCalendarEventId;
+
+        if (appt.googleCalendarEventId) {
+            const sameDoctor = newDoctorId === appt.doctorId;
+            if (sameDoctor && isConnected(newDoctorId)) {
+                // PATCH existing event — no duplicate
+                await updateCalendarEvent({
+                    doctorId: newDoctorId,
+                    eventId: appt.googleCalendarEventId,
+                    title: `${appt.patientName} — ${appt.procedure}`,
+                    startTime: newTime,
+                    durationMinutes: appt.durationMinutes,
+                    date: eventDate,
+                });
+            } else {
+                // Doctor changed: delete from old calendar, create on new one
+                if (isConnected(appt.doctorId)) {
+                    await deleteCalendarEvent(appt.doctorId, appt.googleCalendarEventId);
+                }
+                if (isConnected(newDoctorId)) {
+                    const gcalId = await createCalendarEvent({
+                        doctorId: newDoctorId,
+                        title: `${appt.patientName} — ${appt.procedure}`,
+                        startTime: newTime,
+                        durationMinutes: appt.durationMinutes,
+                        date: eventDate,
+                    });
+                    newGcalEventId = gcalId ?? undefined;
+                } else {
+                    newGcalEventId = undefined;
+                }
+            }
+        }
+
+        const updated: AppointmentType = { ...appt, startTime: newTime, doctorId: newDoctorId, googleCalendarEventId: newGcalEventId };
+        const isLocal = appointments.some(a => a.id === appt.id);
+        if (isLocal) {
+            setAppointments(prev => prev.map(a => a.id === appt.id ? updated : a));
+        } else {
+            // gcal-only event: move to local appointments so change persists
+            setAppointments(prev => [...prev, updated]);
+            setGcalEvents(prev => prev.filter(e => e.id !== appt.id));
+        }
+
+        setTimeout(() => syncGoogleCalendar(), 1500);
+    }, [currentYear, currentMonth, selectedDate, appointments, syncGoogleCalendar]);
 
     const handleOptimize = () => {
         setIsOptimizing(true);
@@ -431,21 +489,38 @@ export const Agenda: React.FC = () => {
                                                         <div className="w-20 shrink-0 border-r border-b border-white/10 sticky left-0 z-30 bg-[#0B1526] text-center py-2 text-xs text-clinical/80 font-medium">
                                                             <span className="-translate-y-3 block bg-[#0B1526] px-1 mx-auto w-fit relative">{time}</span>
                                                         </div>
-                                                        {doctors.map((doctor: any) => (
-                                                            <div
-                                                                key={`${doctor.id}-${time}`}
-                                                                onClick={() => {
-                                                                    if (!isMaxCapacity) {
-                                                                        setInitialModalTime(time);
-                                                                        setInitialModalDoctorId(doctor.id);
-                                                                        setIsNewAppointmentModalOpen(true);
-                                                                    }
-                                                                }}
-                                                                className={`w-64 shrink-0 border-r border-b border-white/5 h-12 relative transition-colors ${isMaxCapacity ? 'bg-red-500/5' : 'hover:bg-white/5 cursor-crosshair'}`}
-                                                            >
-                                                                {isMaxCapacity && <div className="absolute inset-0 striped-bg-red opacity-10 pointer-events-none"></div>}
-                                                            </div>
-                                                        ))}
+                                                        {doctors.map((doctor: any) => {
+                                                            const isDropTarget = dragOverSlot?.time === time && dragOverSlot?.doctorId === doctor.id;
+                                                            return (
+                                                                <div
+                                                                    key={`${doctor.id}-${time}`}
+                                                                    onClick={() => {
+                                                                        if (!isMaxCapacity && !draggingApptRef.current) {
+                                                                            setInitialModalTime(time);
+                                                                            setInitialModalDoctorId(doctor.id);
+                                                                            setIsNewAppointmentModalOpen(true);
+                                                                        }
+                                                                    }}
+                                                                    onDragOver={e => { e.preventDefault(); setDragOverSlot({ time, doctorId: doctor.id }); }}
+                                                                    onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverSlot(null); }}
+                                                                    onDrop={e => {
+                                                                        e.preventDefault();
+                                                                        if (draggingApptRef.current) {
+                                                                            handleApptDrop(draggingApptRef.current, time, doctor.id);
+                                                                            draggingApptRef.current = null;
+                                                                        }
+                                                                        setDragOverSlot(null);
+                                                                    }}
+                                                                    className={`w-64 shrink-0 border-r border-b border-white/5 h-12 relative transition-colors ${
+                                                                        isDropTarget ? 'bg-electric/20' :
+                                                                        isMaxCapacity ? 'bg-red-500/5' : 'hover:bg-white/5 cursor-crosshair'
+                                                                    }`}
+                                                                >
+                                                                    {isMaxCapacity && !isDropTarget && <div className="absolute inset-0 striped-bg-red opacity-10 pointer-events-none" />}
+                                                                    {isDropTarget && <div className="absolute inset-0 border-2 border-dashed border-electric/60 rounded pointer-events-none" />}
+                                                                </div>
+                                                            );
+                                                        })}
                                                     </div>
                                                 );
                                             })}
@@ -521,8 +596,23 @@ export const Agenda: React.FC = () => {
                                                 return (
                                                     <div
                                                         key={appt.id}
-                                                        onClick={() => setApptActionMenu(appt)}
-                                                        className={`absolute rounded-md border p-2 text-xs overflow-hidden shadow-lg hover:z-50 hover:brightness-110 transition-all backdrop-blur-md flex flex-col pb-6 z-20 hover:scale-[1.02] cursor-pointer ${cardStyle}`}
+                                                        draggable
+                                                        onDragStart={e => {
+                                                            draggingApptRef.current = appt;
+                                                            e.dataTransfer.effectAllowed = 'move';
+                                                            // Transparent ghost so the card itself gives visual feedback
+                                                            const ghost = document.createElement('div');
+                                                            ghost.style.cssText = 'position:fixed;top:-9999px;width:200px;height:40px;background:#1e90ff22;border:1px solid #1e90ff;border-radius:6px;';
+                                                            document.body.appendChild(ghost);
+                                                            e.dataTransfer.setDragImage(ghost, 100, 20);
+                                                            setTimeout(() => document.body.removeChild(ghost), 0);
+                                                        }}
+                                                        onDragEnd={() => {
+                                                            draggingApptRef.current = null;
+                                                            setDragOverSlot(null);
+                                                        }}
+                                                        onClick={() => { if (!draggingApptRef.current) setApptActionMenu(appt); }}
+                                                        className={`absolute rounded-md border p-2 text-xs overflow-hidden shadow-lg hover:z-50 hover:brightness-110 transition-all backdrop-blur-md flex flex-col pb-6 z-20 hover:scale-[1.02] cursor-grab active:cursor-grabbing active:opacity-70 ${cardStyle}`}
                                                         style={{
                                                             top: `${yOffset}px`,
                                                             height: `${height}px`,
