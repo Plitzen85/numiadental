@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Save, RotateCcw, Tag, CheckCircle2, Plus, Trash2, Stethoscope } from 'lucide-react';
+import { Save, RotateCcw, Tag, CheckCircle2, Plus, Trash2, Stethoscope, BedDouble, Car } from 'lucide-react';
 import { useMarket } from '../context/MarketContext';
 import { DEFAULT_TREATMENT_PRICES } from '../components/patient/HybridChart';
 import { ToothCondition } from '../components/patient/ToothSVG';
@@ -94,7 +94,40 @@ export const CatalogProducts: React.FC = () => {
         setExtras(prev => prev.filter(e => e.id !== id));
     };
 
-    // ── Save both sections ───────────────────────────────────────────────────
+    // ── Hospedaje prices (per night) ─────────────────────────────────────────
+    const HOSPEDAJE_KEYS = ['Departamento Estándar', 'Departamento de Lujo', 'Casa', 'Hotel 5 Estrellas'];
+    const [hospedaje, setHospedaje] = useState<Record<string, number>>(() => ({
+        'Departamento Estándar': 2500,
+        'Departamento de Lujo': 5000,
+        'Casa': 7500,
+        'Hotel 5 Estrellas': 10000,
+        ...(clinicProfile?.catalogoHospedaje ?? {}),
+    }));
+
+    useEffect(() => {
+        setHospedaje(prev => ({ ...prev, ...(clinicProfile?.catalogoHospedaje ?? {}) }));
+    }, [clinicProfile?.catalogoHospedaje]);
+
+    const handleHospedajeChange = (key: string, value: string) => {
+        setHospedaje(prev => ({ ...prev, [key]: parseFloat(value) || 0 }));
+    };
+
+    // ── Transporte y Viáticos ────────────────────────────────────────────────
+    const [transporte, setTransporte] = useState<Record<string, number>>(() => ({
+        'Transportación': 800,
+        'Comida Wellness': 500,
+        ...(clinicProfile?.catalogoTransporte ?? {}),
+    }));
+
+    useEffect(() => {
+        setTransporte(prev => ({ ...prev, ...(clinicProfile?.catalogoTransporte ?? {}) }));
+    }, [clinicProfile?.catalogoTransporte]);
+
+    const handleTransporteChange = (key: string, value: string) => {
+        setTransporte(prev => ({ ...prev, [key]: parseFloat(value) || 0 }));
+    };
+
+    // ── Save all sections ─────────────────────────────────────────────────────
     const handleSave = async () => {
         if (!clinicProfile) return;
         setIsSaving(true);
@@ -102,6 +135,8 @@ export const CatalogProducts: React.FC = () => {
             ...clinicProfile,
             odontogramPrices: prices,
             catalogoExtra: extras,
+            catalogoHospedaje: hospedaje,
+            catalogoTransporte: transporte,
         });
         setIsSaving(false);
         setSavedOk(true);
@@ -285,6 +320,98 @@ export const CatalogProducts: React.FC = () => {
                     >
                         <Plus className="w-4 h-4" /> Agregar tratamiento
                     </button>
+                </div>
+            </motion.div>
+
+            {/* ── Section 3: Hospedaje ─────────────────────────────────────── */}
+            <div className="flex items-center justify-between mb-3 mt-8">
+                <div className="flex items-center gap-2">
+                    <BedDouble className="w-4 h-4 text-electric/70" />
+                    <h2 className="text-sm font-bold text-white uppercase tracking-widest">Hospedaje</h2>
+                </div>
+                <p className="text-[10px] text-clinical/40">Precio por noche · Turismo Dental</p>
+            </div>
+
+            <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.08 }}
+                className="glass-panel border border-white/10 rounded-2xl overflow-hidden mb-8"
+            >
+                <div className="grid grid-cols-[1fr_1fr] gap-4 px-6 py-3 border-b border-white/5 text-[10px] font-bold text-clinical/40 uppercase tracking-widest">
+                    <span>Tipo de hospedaje</span>
+                    <span>Precio por noche (MXN)</span>
+                </div>
+                {HOSPEDAJE_KEYS.map((key, idx) => (
+                    <div key={key} className={`grid grid-cols-[1fr_1fr] gap-4 items-center px-6 py-3 ${idx < HOSPEDAJE_KEYS.length - 1 ? 'border-b border-white/5' : ''} hover:bg-white/2 transition-colors`}>
+                        <span className="text-sm text-clinical/80">{key}</span>
+                        <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-clinical/40 text-sm">$</span>
+                            <input
+                                type="number" min={0}
+                                title={`Precio ${key}`}
+                                placeholder="0"
+                                value={hospedaje[key] ?? 0}
+                                onChange={e => handleHospedajeChange(key, e.target.value)}
+                                className="w-full bg-white/5 border border-white/10 rounded-lg pl-7 pr-3 py-1.5 text-sm text-white focus:outline-none focus:border-electric/50 focus:ring-1 focus:ring-electric/20 transition-all"
+                            />
+                        </div>
+                    </div>
+                ))}
+            </motion.div>
+
+            {/* ── Section 4: Transporte y Viáticos ─────────────────────────── */}
+            <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                    <Car className="w-4 h-4 text-electric/70" />
+                    <h2 className="text-sm font-bold text-white uppercase tracking-widest">Transporte y Viáticos</h2>
+                </div>
+                <p className="text-[10px] text-clinical/40">Turismo Dental</p>
+            </div>
+
+            <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 }}
+                className="glass-panel border border-white/10 rounded-2xl overflow-hidden mb-4"
+            >
+                <div className="grid grid-cols-[1fr_1fr] gap-4 px-6 py-3 border-b border-white/5 text-[10px] font-bold text-clinical/40 uppercase tracking-widest">
+                    <span>Servicio</span>
+                    <span>Precio base (MXN)</span>
+                </div>
+                <div className="grid grid-cols-[1fr_1fr] gap-4 items-center px-6 py-3 border-b border-white/5 hover:bg-white/2 transition-colors">
+                    <div>
+                        <p className="text-sm text-clinical/80">Transportación</p>
+                        <p className="text-[10px] text-clinical/40 mt-0.5">Precio unitario ida · se multiplica ×2 en el paquete</p>
+                    </div>
+                    <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-clinical/40 text-sm">$</span>
+                        <input
+                            type="number" min={0}
+                            title="Precio Transportación"
+                            placeholder="0"
+                            value={transporte['Transportación'] ?? 0}
+                            onChange={e => handleTransporteChange('Transportación', e.target.value)}
+                            className="w-full bg-white/5 border border-white/10 rounded-lg pl-7 pr-3 py-1.5 text-sm text-white focus:outline-none focus:border-electric/50 focus:ring-1 focus:ring-electric/20 transition-all"
+                        />
+                    </div>
+                </div>
+                <div className="grid grid-cols-[1fr_1fr] gap-4 items-center px-6 py-3 hover:bg-white/2 transition-colors">
+                    <div>
+                        <p className="text-sm text-clinical/80">Comida Wellness</p>
+                        <p className="text-[10px] text-clinical/40 mt-0.5">Precio por día · se multiplica × días del viaje</p>
+                    </div>
+                    <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-clinical/40 text-sm">$</span>
+                        <input
+                            type="number" min={0}
+                            title="Precio Comida Wellness"
+                            placeholder="0"
+                            value={transporte['Comida Wellness'] ?? 0}
+                            onChange={e => handleTransporteChange('Comida Wellness', e.target.value)}
+                            className="w-full bg-white/5 border border-white/10 rounded-lg pl-7 pr-3 py-1.5 text-sm text-white focus:outline-none focus:border-electric/50 focus:ring-1 focus:ring-electric/20 transition-all"
+                        />
+                    </div>
                 </div>
             </motion.div>
 

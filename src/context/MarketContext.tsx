@@ -125,6 +125,8 @@ export interface ClinicProfile {
     servicios: Record<string, Record<string, number>>; // Category -> { Service Name: Price }
     odontogramPrices?: Record<string, { name: string; price: number }>; // ToothCondition -> price info
     catalogoExtra?: { id: string; name: string; price: number }[]; // Extra clinic treatments (Tourism reference)
+    catalogoHospedaje?: Record<string, number>; // Accommodation per-night prices
+    catalogoTransporte?: Record<string, number>; // 'Transportación' (one-way) and 'Comida Wellness' (per day)
     logo?: string; // Base64 logo
     staff?: StaffMember[];
     depositos?: DirectoryEntity[];

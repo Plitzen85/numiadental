@@ -377,7 +377,8 @@ export const Tourism: React.FC = () => {
         ciudadOrigen: 'Los Angeles, USA',
         acompanantes: 1,
         costoTratamiento: 25000,
-        tipoHospedaje: 'Departamento Estandar',
+        tipoHospedaje: 'Departamento Estándar',
+        costoHospedajeCustom: 0,       // per-night price for "Otra" option
         costoAvion: 6500,
         costoTransporte: 2000,
         costoComida: 2000,
@@ -387,33 +388,70 @@ export const Tourism: React.FC = () => {
         nombreComision2: ''
     });
 
-    // Locked treatment: exists in catalog with price > 0
+    // ── Locked treatment from catalog ──────────────────────────────────────
     const lockedTreatment = (clinicProfile?.catalogoExtra ?? []).find(
         t => t.name === params.tratamiento && t.price > 0
     ) ?? null;
 
-    // Sync costoTratamiento whenever the selected treatment or catalog changes
     useEffect(() => {
         if (lockedTreatment) {
             setParams(prev => ({ ...prev, costoTratamiento: lockedTreatment.price }));
         }
     }, [params.tratamiento, clinicProfile?.catalogoExtra]);
 
+    // ── Hospedaje from catalog ─────────────────────────────────────────────
+    const catalogHosp = clinicProfile?.catalogoHospedaje ?? {};
+    const hospedajeOptions: string[] = Object.keys(catalogHosp).length > 0
+        ? Object.keys(catalogHosp)
+        : ['Departamento Estándar', 'Departamento de Lujo', 'Casa', 'Hotel 5 Estrellas'];
+
+    // Per-night price for selected option (null if __none__ / __otra__ / no catalog)
+    const lockedHospedajePorNoche: number | null =
+        params.tipoHospedaje !== '__none__' && params.tipoHospedaje !== '__otra__' && catalogHosp[params.tipoHospedaje] > 0
+            ? catalogHosp[params.tipoHospedaje]
+            : null;
+
+    // Total hospedaje cost used in generation
+    const computedCostoHospedaje: number = (() => {
+        if (params.tipoHospedaje === '__none__') return 0;
+        if (params.tipoHospedaje === '__otra__') return (params.costoHospedajeCustom || 0) * params.duracion;
+        if (lockedHospedajePorNoche !== null) return lockedHospedajePorNoche * params.duracion;
+        // Fallback hardcoded defaults
+        const fallback: Record<string, number> = {
+            'Departamento Estándar': 2500, 'Departamento de Lujo': 5000,
+            'Casa': 7500, 'Hotel 5 Estrellas': 10000,
+        };
+        return (fallback[params.tipoHospedaje] ?? 2500) * params.duracion;
+    })();
+
+    // ── Transporte & Comida from catalog ───────────────────────────────────
+    const catalogTrans = clinicProfile?.catalogoTransporte ?? {};
+    const transporteUnitPrice = catalogTrans['Transportación'] ?? 0;
+    const comidaPerDia = catalogTrans['Comida Wellness'] ?? 0;
+
+    const lockedTransporte: number | null = transporteUnitPrice > 0 ? transporteUnitPrice * 2 : null;
+    const lockedComida: number | null = comidaPerDia > 0 ? comidaPerDia * params.duracion : null;
+
+    // Sync locked transport/comida into params so they're visible in the display
+    useEffect(() => {
+        setParams(prev => ({
+            ...prev,
+            ...(lockedTransporte !== null ? { costoTransporte: lockedTransporte } : {}),
+            ...(lockedComida !== null ? { costoComida: lockedComida } : {}),
+        }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [transporteUnitPrice, comidaPerDia, params.duracion]);
+
     const handleGenerate = async () => {
         setIsGenerating(true);
         setResult(null);
 
-        // Calcular costo de hospedaje dinámico
-        const tarifasHospedaje: Record<string, number> = {
-            'Departamento Estandar': 2500,
-            'Departamento de Lujo': 5000,
-            'Casa': 7500,
-            'Hotel 5 Estrellas': 10000
+        const finalParams = {
+            ...params,
+            costoHospedaje: computedCostoHospedaje,
+            costoTransporte: lockedTransporte ?? params.costoTransporte,
+            costoComida: lockedComida ?? params.costoComida,
         };
-        const noches = params.duracion;
-        const costoHospedaje = (tarifasHospedaje[params.tipoHospedaje] || 2500) * noches;
-
-        const finalParams = { ...params, costoHospedaje };
 
         try {
             const res = await generateDentalTourismPackage(finalParams);
@@ -515,20 +553,57 @@ export const Tourism: React.FC = () => {
                                     </div>
                                     <div>
                                         <label className="text-[10px] text-clinical/40 block mb-1">Hospedaje</label>
-                                        <select title="Opciones" value={params.tipoHospedaje} onChange={e => setParams({ ...params, tipoHospedaje: e.target.value })} className="w-full bg-cobalt border border-white/20 rounded-lg px-3 py-1.5 text-sm text-clinical focus:outline-none focus:border-electric appearance-none">
-                                            <option value="Departamento Estandar">Depa Estándar</option>
-                                            <option value="Departamento de Lujo">Depa de Lujo</option>
-                                            <option value="Casa">Casa</option>
-                                            <option value="Hotel 5 Estrellas">Hotel 5 Estrellas</option>
+                                        <select title="Opciones" value={params.tipoHospedaje} onChange={e => setParams({ ...params, tipoHospedaje: e.target.value, costoHospedajeCustom: 0 })} className="w-full bg-cobalt border border-white/20 rounded-lg px-3 py-1.5 text-sm text-clinical focus:outline-none focus:border-electric appearance-none">
+                                            <option value="__none__">Sin Hospedaje</option>
+                                            <optgroup label="Catálogo">
+                                                {hospedajeOptions.map(opt => (
+                                                    <option key={opt} value={opt}>{opt}</option>
+                                                ))}
+                                            </optgroup>
+                                            <option value="__otra__">Otra opción…</option>
                                         </select>
+                                        {lockedHospedajePorNoche !== null && (
+                                            <div className="mt-1 text-[10px] text-electric/60">
+                                                ${lockedHospedajePorNoche.toLocaleString('es-MX')}/noche × {params.duracion} días = ${computedCostoHospedaje.toLocaleString('es-MX')}
+                                            </div>
+                                        )}
+                                        {params.tipoHospedaje === '__otra__' && (
+                                            <input
+                                                title="Precio por noche"
+                                                type="number" min={0}
+                                                placeholder="Precio por noche"
+                                                value={params.costoHospedajeCustom || ''}
+                                                onChange={e => setParams({ ...params, costoHospedajeCustom: Number(e.target.value) })}
+                                                className="mt-1 w-full bg-cobalt border border-electric/30 rounded-lg px-3 py-1.5 text-sm text-clinical focus:border-electric"
+                                            />
+                                        )}
+                                        {params.tipoHospedaje === '__none__' && (
+                                            <div className="mt-1 text-[10px] text-clinical/40">No se incluye hospedaje en el paquete</div>
+                                        )}
                                     </div>
                                     <div>
                                         <label className="text-[10px] text-clinical/40 block mb-1">Avión</label>
                                         <input title="Campo" type="number" value={params.costoAvion} onChange={e => setParams({ ...params, costoAvion: Number(e.target.value) })} className="w-full bg-cobalt border border-white/20 rounded-lg px-3 py-1.5 text-sm text-clinical focus:border-electric" />
                                     </div>
                                     <div>
-                                        <label className="text-[10px] text-clinical/40 block mb-1">Transp./Viát.</label>
-                                        <input title="Campo" type="number" value={params.costoTransporte} onChange={e => setParams({ ...params, costoTransporte: Number(e.target.value) })} className="w-full bg-cobalt border border-white/20 rounded-lg px-3 py-1.5 text-sm text-clinical focus:border-electric" />
+                                        <label className="text-[10px] text-clinical/40 block mb-1">
+                                            Transportación
+                                            {lockedTransporte !== null && <span className="ml-1 text-electric/60">(catálogo ×2)</span>}
+                                        </label>
+                                        {lockedTransporte !== null
+                                            ? <div className="w-full bg-cobalt/50 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-clinical/60 cursor-not-allowed select-none">${lockedTransporte.toLocaleString('es-MX')}</div>
+                                            : <input title="Campo" type="number" value={params.costoTransporte} onChange={e => setParams({ ...params, costoTransporte: Number(e.target.value) })} className="w-full bg-cobalt border border-white/20 rounded-lg px-3 py-1.5 text-sm text-clinical focus:border-electric" />
+                                        }
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] text-clinical/40 block mb-1">
+                                            Comida Wellness
+                                            {lockedComida !== null && <span className="ml-1 text-electric/60">(catálogo ×días)</span>}
+                                        </label>
+                                        {lockedComida !== null
+                                            ? <div className="w-full bg-cobalt/50 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-clinical/60 cursor-not-allowed select-none">${lockedComida.toLocaleString('es-MX')}</div>
+                                            : <input title="Campo" type="number" value={params.costoComida} onChange={e => setParams({ ...params, costoComida: Number(e.target.value) })} className="w-full bg-cobalt border border-white/20 rounded-lg px-3 py-1.5 text-sm text-clinical focus:border-electric" />
+                                        }
                                     </div>
                                 </div>
                             </div>
