@@ -10,18 +10,22 @@ import {
 
 const CATEGORIES = ['Preventivo', 'Restauradores', 'Estéticos', 'Ortodónticos', 'Periodontales', 'Merchandising'];
 
+// ⚠️  IMPORTANTE: Cada vez que se agregue o elimine una página/módulo del proyecto,
+//     se debe actualizar esta lista Y la interfaz ModulePermissions en MarketContext.tsx.
 const MODULE_LABELS: { key: keyof ModulePermissions; label: string }[] = [
-    { key: 'dashboard', label: 'Dashboard' },
-    { key: 'radar', label: 'Radar Dental' },
-    { key: 'agenda', label: 'Agenda & CRM' },
-    { key: 'clinica', label: 'Clínica' },
-    { key: 'inventario', label: 'Inventario' },
-    { key: 'catalogo', label: 'Catálogo de Productos' },
-    { key: 'campanas', label: 'Campañas' },
-    { key: 'turismo', label: 'Turismo Dental' },
-    { key: 'finanzas', label: 'Finanzas' },
-    { key: 'reportes', label: 'Informes' },
-    { key: 'settings', label: 'Configuración' },
+    { key: 'dashboard',   label: 'Dashboard' },
+    { key: 'radar',       label: 'Radar Dental' },
+    { key: 'agenda',      label: 'Agenda & CRM' },
+    { key: 'clinica',     label: 'Clínica' },
+    { key: 'inventario',  label: 'Inventario' },
+    { key: 'catalogo',    label: 'Catálogo de Productos' },
+    { key: 'proveedores', label: 'Proveedores' },
+    { key: 'campanas',    label: 'Campañas' },
+    { key: 'turismo',     label: 'Turismo Dental' },
+    { key: 'finanzas',    label: 'Finanzas' },
+    { key: 'caja',        label: 'Caja del Día' },
+    { key: 'reportes',    label: 'Informes' },
+    { key: 'settings',    label: 'Configuración' },
 ];
 
 export const Settings: React.FC = () => {

@@ -48,6 +48,7 @@ export interface ModulePermissions {
     campanas: boolean;
     turismo: boolean;
     finanzas: boolean;
+    caja: boolean;
     reportes: boolean;
     settings: boolean;
     catalogo: boolean;
@@ -57,13 +58,13 @@ export interface ModulePermissions {
 export const DEFAULT_ADMIN_PERMISSIONS: ModulePermissions = {
     dashboard: true, radar: true, agenda: true, clinica: true,
     inventario: true, campanas: true, turismo: true, finanzas: true,
-    reportes: true, settings: true, catalogo: true, proveedores: true,
+    caja: true, reportes: true, settings: true, catalogo: true, proveedores: true,
 };
 
 export const DEFAULT_DOCTOR_PERMISSIONS: ModulePermissions = {
     dashboard: true, radar: false, agenda: true, clinica: true,
     inventario: false, campanas: false, turismo: false, finanzas: false,
-    reportes: false, settings: false, catalogo: false, proveedores: false,
+    caja: false, reportes: false, settings: false, catalogo: false, proveedores: false,
 };
 
 export interface StaffMember {

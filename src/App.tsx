@@ -95,7 +95,7 @@ function AppContent() {
                 <Route path="/settings" element={<PermissionGuard module="settings"><Settings /></PermissionGuard>} />
                 <Route path="/finanzas" element={<PermissionGuard module="finanzas"><Finances /></PermissionGuard>} />
                 <Route path="/proveedores" element={<PermissionGuard module="proveedores"><Proveedores /></PermissionGuard>} />
-                <Route path="/caja" element={<PermissionGuard module="finanzas"><Caja /></PermissionGuard>} />
+                <Route path="/caja" element={<PermissionGuard module="caja"><Caja /></PermissionGuard>} />
                 <Route path="/reportes" element={<PermissionGuard module="reportes"><Reports /></PermissionGuard>} />
                 <Route path="/unauthorized" element={<Unauthorized />} />
                 <Route path="/login" element={<Navigate to="/" replace />} />
