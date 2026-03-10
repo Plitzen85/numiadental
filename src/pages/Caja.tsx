@@ -3,14 +3,14 @@ import {
     Landmark, Plus, Lock, Unlock, TrendingUp, TrendingDown,
     Banknote, CreditCard, ArrowDownToLine, Bitcoin, Minus,
     CheckCircle2, AlertCircle, Clock, ChevronDown, ChevronUp,
-    DollarSign, X, Loader2, Receipt, Pencil,
+    DollarSign, X, Loader2, Receipt, Pencil, Trash2, ShieldAlert,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useMarket } from '../context/MarketContext';
 import {
     getTodayCaja, abrirCaja, cerrarCaja, addMovimiento,
     getAllCajas, calcTotals, CajaDay, CajaMovimiento,
-    editCajaCierre,
+    editCajaCierre, deleteCaja,
 } from '../lib/cajaApi';
 import { MetodoPago } from '../lib/supabase';
 
@@ -100,6 +100,11 @@ export const Caja: React.FC = () => {
     const [editNotas, setEditNotas] = useState('');
     const [savingEdit, setSavingEdit] = useState(false);
 
+    // ── Delete caja modal (master admin only) ────────────────────────────────
+    const [deletingCaja, setDeletingCaja] = useState<CajaDay | null>(null);
+    const [deletePassword, setDeletePassword] = useState('');
+    const [deleteError, setDeleteError] = useState('');
+
     // ── Toast ────────────────────────────────────────────────────────────────
     const [toast, setToast] = useState('');
     const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 3000); };
@@ -183,6 +188,23 @@ export const Caja: React.FC = () => {
         setSavingEdit(false);
         setEditingCaja(null);
         showToast('Cierre actualizado correctamente');
+    };
+
+    const handleConfirmDelete = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!deletingCaja) return;
+        // Find master admin and verify password
+        const masterAdmin = clinicProfile?.staff?.find(s => s.isMasterAdmin);
+        if (!masterAdmin || deletePassword !== masterAdmin.password) {
+            setDeleteError('Contraseña incorrecta. Solo el administrador maestro puede eliminar cortes.');
+            return;
+        }
+        deleteCaja(deletingCaja.id);
+        setHistorial(prev => prev.filter(h => h.id !== deletingCaja.id));
+        setDeletingCaja(null);
+        setDeletePassword('');
+        setDeleteError('');
+        showToast('Corte de caja eliminado permanentemente');
     };
 
     const sortedMovs = useMemo(() =>
@@ -451,6 +473,14 @@ export const Caja: React.FC = () => {
                                                     >
                                                         <Pencil className="w-3.5 h-3.5" />
                                                     </button>
+                                                    <button
+                                                        type="button"
+                                                        title="Eliminar corte (Admin)"
+                                                        onClick={() => { setDeletingCaja(h); setDeletePassword(''); setDeleteError(''); }}
+                                                        className="p-2 rounded-lg hover:bg-red-500/10 text-clinical/30 hover:text-red-400 transition-colors"
+                                                    >
+                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                    </button>
                                                 </div>
                                             </div>
                                         </div>
@@ -669,6 +699,80 @@ export const Caja: React.FC = () => {
                                     className="w-full py-3.5 rounded-2xl bg-electric text-cobalt font-black flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
                                 >
                                     {savingEdit ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Pencil className="w-5 h-5" /> Guardar Corrección</>}
+                                </button>
+                            </form>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* ════ MODAL ELIMINAR CORTE (Admin) ════ */}
+            <AnimatePresence>
+                {deletingCaja && (
+                    <motion.div
+                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+                        onClick={e => { if (e.target === e.currentTarget) { setDeletingCaja(null); setDeletePassword(''); setDeleteError(''); } }}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95 }}
+                            className="bg-[#0d1b2a] border border-red-500/30 rounded-3xl w-full max-w-sm p-6 shadow-2xl"
+                        >
+                            {/* Header */}
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-red-500/15 border border-red-500/30 flex items-center justify-center">
+                                        <ShieldAlert className="w-5 h-5 text-red-400" />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-syne text-lg font-bold text-white">Eliminar Corte</h3>
+                                        <p className="text-xs text-red-400/70">Acción irreversible</p>
+                                    </div>
+                                </div>
+                                <button type="button" title="Cerrar" onClick={() => { setDeletingCaja(null); setDeletePassword(''); setDeleteError(''); }}
+                                    className="text-clinical/40 hover:text-white p-1.5 rounded-xl hover:bg-white/5 transition-colors">
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+
+                            {/* Warning */}
+                            <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-4 mb-5">
+                                <p className="text-red-300 text-sm font-bold mb-1">¿Eliminar este corte de caja?</p>
+                                <p className="text-red-400/70 text-xs capitalize">{fmtDate(deletingCaja.date)}</p>
+                                <p className="text-red-400/60 text-xs mt-2">
+                                    Esta operación eliminará permanentemente el corte y todos sus movimientos del historial.
+                                    Solo el administrador maestro puede autorizar esta acción.
+                                </p>
+                            </div>
+
+                            {/* Password form */}
+                            <form onSubmit={handleConfirmDelete} className="space-y-4">
+                                <div>
+                                    <label className="text-xs text-clinical/50 font-bold uppercase mb-1 block">
+                                        Contraseña del Administrador Maestro
+                                    </label>
+                                    <input
+                                        type="password"
+                                        title="Contraseña del administrador maestro"
+                                        required
+                                        autoFocus
+                                        value={deletePassword}
+                                        onChange={e => { setDeletePassword(e.target.value); setDeleteError(''); }}
+                                        placeholder="••••••••"
+                                        className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:border-red-400 outline-none transition-colors"
+                                    />
+                                    {deleteError && (
+                                        <p className="text-red-400 text-xs mt-1.5 flex items-center gap-1">
+                                            <AlertCircle className="w-3.5 h-3.5 shrink-0" /> {deleteError}
+                                        </p>
+                                    )}
+                                </div>
+                                <button
+                                    type="submit"
+                                    disabled={!deletePassword}
+                                    className="w-full py-3.5 rounded-2xl bg-red-500 text-white font-black flex items-center justify-center gap-2 hover:bg-red-600 transition-colors disabled:opacity-40"
+                                >
+                                    <Trash2 className="w-5 h-5" /> Eliminar Corte Permanentemente
                                 </button>
                             </form>
                         </motion.div>

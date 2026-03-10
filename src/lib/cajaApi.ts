@@ -238,3 +238,12 @@ export const addMovimientoToCaja = (
     saveAll(all);
     return all[idx];
 };
+
+/** Permanently delete a caja day record (master admin only — caller must verify password) */
+export const deleteCaja = (cajaId: string): boolean => {
+    const all = getAll();
+    const filtered = all.filter(d => d.id !== cajaId);
+    if (filtered.length === all.length) return false; // not found
+    saveAll(filtered);
+    return true;
+};
