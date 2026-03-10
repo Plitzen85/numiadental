@@ -33,7 +33,7 @@ export interface GCalEvent {
     end: { dateTime?: string; date?: string; timeZone?: string };
     status?: string;
     htmlLink?: string;
-    attendees?: { email: string; displayName?: string }[];
+    attendees?: { email: string; displayName?: string; self?: boolean }[];
 }
 
 // ---------------------------------------------------------------------------
@@ -320,6 +320,44 @@ export async function createCalendarEvent(options: {
 }
 
 /**
+ * Updates (PATCHes) an existing event on the doctor's primary Google Calendar.
+ * Returns true on success.
+ */
+export async function updateCalendarEvent(options: {
+    doctorId: string;
+    eventId: string;
+    title: string;
+    startTime: string;       // "HH:mm"
+    durationMinutes: number;
+    date: Date;
+    description?: string;
+    patientEmail?: string;
+}): Promise<boolean> {
+    const token = getStoredToken(options.doctorId);
+    if (!token) return false;
+
+    const [h, m] = options.startTime.split(':').map(Number);
+    const start = new Date(options.date);
+    start.setHours(h, m, 0, 0);
+    const end = new Date(start.getTime() + options.durationMinutes * 60_000);
+
+    const body: Record<string, unknown> = {
+        summary: options.title,
+        start: { dateTime: start.toISOString() },
+        end: { dateTime: end.toISOString() },
+    };
+    if (options.description) body.description = options.description;
+    if (options.patientEmail) body.attendees = [{ email: options.patientEmail }];
+
+    const result = await gcalFetch(
+        `/calendars/primary/events/${options.eventId}`,
+        token.access_token,
+        { method: 'PATCH', body: JSON.stringify(body) }
+    );
+    return result !== null;
+}
+
+/**
  * Deletes an event from a doctor's Google Calendar.
  */
 export async function deleteCalendarEvent(doctorId: string, eventId: string): Promise<boolean> {
@@ -350,7 +388,8 @@ export function gcalEventToAppointment(event: GCalEvent, doctorId: string): Appo
         `${start.getHours().toString().padStart(2, '0')}:` +
         `${start.getMinutes().toString().padStart(2, '0')}`;
 
-    const attendeeEmail = event.attendees?.[0]?.email;
+    // Skip the calendar owner (self: true) to find the actual patient's email
+    const attendeeEmail = event.attendees?.find(a => !a.self)?.email;
 
     return {
         id: `gcal-${event.id}`,

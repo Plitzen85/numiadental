@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Search, ChevronDown, Check } from 'lucide-react';
 import { useMarket, isDoctor } from '../context/MarketContext';
-import { isConnected, createCalendarEvent, deleteCalendarEvent } from '../lib/googleCalendar';
+import { isConnected, createCalendarEvent, updateCalendarEvent, deleteCalendarEvent } from '../lib/googleCalendar';
 
 interface NewAppointmentModalProps {
     isOpen: boolean;
@@ -36,6 +36,7 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
             if (editAppointment) {
                 // Edit mode: pre-fill all fields from the existing appointment
                 setSelectedDoctor(editAppointment.doctorId);
+                setDurationMinutes(editAppointment.durationMinutes ?? 30);
                 setModalFormState(prev => ({
                     ...prev,
                     datetime_start: `2024-03-01T${editAppointment.startTime}`,
@@ -78,6 +79,7 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [initialLinkedPatientId, isOpen]);
 
+    const [durationMinutes, setDurationMinutes] = useState(30);
     const [selectedTreatments, setSelectedTreatments] = useState<string[]>([]);
     const [selectedLabOrders, setSelectedLabOrders] = useState<string[]>([]);
     const [activeRightTab, setActiveRightTab] = useState<'tratamiento' | 'laboratorio'>('tratamiento');
@@ -140,6 +142,7 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
         setLinkedPatientId(null);
         setSearchSuggestions([]);
         setShowSuggestions(false);
+        setDurationMinutes(30);
         setIsTreatmentsOpen(false);
         setIsLabOrdersOpen(false);
         setIsDoctorSelectOpen(false);
@@ -156,7 +159,7 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
 
         const startDt = new Date(modalFormState["datetime_start"]);
         const timeString = `${startDt.getHours().toString().padStart(2, '0')}:${startDt.getMinutes().toString().padStart(2, '0')}`;
-        const duration = 30;
+        const duration = durationMinutes;
 
         const searchInput = (modalFormState["search"] || '').trim();
         let patientName = searchInput || 'Paciente Nuevo';
@@ -173,19 +176,35 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
 
         // Push to Google Calendar if the doctor is connected
         let gcalEventId: string | undefined;
-        if (isConnected(selectedDoctor)) {
-            // Edit mode: delete old gcal event first to avoid duplicates
-            if (editAppointment?.googleCalendarEventId) {
-                await deleteCalendarEvent(editAppointment.doctorId, editAppointment.googleCalendarEventId);
-            }
-            const eventDate = selectedDate ?? startDt;
-            const gcalId = await createCalendarEvent({
+        const eventDate = selectedDate ?? startDt;
+        const gcalTitle = `${patientName} — ${procedure}`;
+        const gcalDesc = modalFormState["textarea_1"] || modalFormState["textarea_2"] || undefined;
+
+        if (editAppointment?.googleCalendarEventId && editAppointment.doctorId === selectedDoctor && isConnected(selectedDoctor)) {
+            // Same doctor edit: PATCH the existing event (no duplicate)
+            await updateCalendarEvent({
                 doctorId: selectedDoctor,
-                title: `${patientName} — ${procedure}`,
+                eventId: editAppointment.googleCalendarEventId,
+                title: gcalTitle,
                 startTime: timeString,
                 durationMinutes: duration,
                 date: eventDate,
-                description: modalFormState["textarea_1"] || modalFormState["textarea_2"] || undefined,
+                description: gcalDesc,
+                patientEmail,
+            });
+            gcalEventId = editAppointment.googleCalendarEventId; // keep same ID
+        } else if (isConnected(selectedDoctor)) {
+            // Doctor changed or new appointment: delete old event (if any) then create new
+            if (editAppointment?.googleCalendarEventId) {
+                await deleteCalendarEvent(editAppointment.doctorId, editAppointment.googleCalendarEventId);
+            }
+            const gcalId = await createCalendarEvent({
+                doctorId: selectedDoctor,
+                title: gcalTitle,
+                startTime: timeString,
+                durationMinutes: duration,
+                date: eventDate,
+                description: gcalDesc,
                 patientEmail,
             });
             if (gcalId) gcalEventId = gcalId;
@@ -305,7 +324,7 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
                                 </div>
 
                                 {/* Dates */}
-                                <div className="mb-4">
+                                <div className="mb-3">
                                     <div className="w-full relative">
                                         <label className="text-[10px] uppercase font-bold text-gray-500 absolute top-1 left-2">Calendario</label>
                                         <input title="Campo" type="datetime-local"
@@ -314,6 +333,25 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
                                             className="w-full px-2 pt-5 pb-1 text-gray-800 rounded-lg border border-gray-200 bg-white text-sm focus:border-electric outline-none transition-colors"
                                         />
                                     </div>
+                                </div>
+
+                                {/* Duration selector */}
+                                <div className="flex items-center gap-2 flex-wrap mb-1">
+                                    <span className="text-[10px] uppercase font-bold text-gray-500">Duración</span>
+                                    {[15, 30, 45, 60, 90, 120].map(mins => (
+                                        <button
+                                            key={mins}
+                                            type="button"
+                                            onClick={() => setDurationMinutes(mins)}
+                                            className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${
+                                                durationMinutes === mins
+                                                    ? 'bg-electric text-cobalt border-electric'
+                                                    : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'
+                                            }`}
+                                        >
+                                            {mins < 60 ? `${mins}m` : `${mins / 60}h`}
+                                        </button>
+                                    ))}
                                 </div>
                                 {selectedDoctor && (
                                     <div className={`text-[10px] font-bold mb-4 flex items-center gap-1 px-2 py-1 rounded w-fit ${isConnected(selectedDoctor) ? 'text-emerald-600 bg-emerald-50' : 'text-gray-400 bg-gray-100'}`}>
