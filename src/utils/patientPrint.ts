@@ -463,12 +463,9 @@ export function printTreatmentPlan(
 
     const fmt = (d: Date) => d.toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' });
 
-    const phases = [...new Set(plan.items.filter(i => i.status !== 'cancelled').map(i => i.phase))].sort();
-
-    const STATUS_LABELS: Record<string, string> = {
-        pending: 'Pendiente', in_progress: 'En Proceso',
-        completed: 'Completado', paid: 'Pagado', cancelled: 'Cancelado',
-    };
+    // Presupuesto = only pending items (not yet started, completed, paid, or cancelled)
+    const pendingItems = plan.items.filter(i => i.status === 'pending');
+    const phases = [...new Set(pendingItems.map(i => i.phase))].sort();
 
     const formatMXN = (n: number) => `$${n.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -476,7 +473,7 @@ export function printTreatmentPlan(
     let grandDiscount = 0;
 
     const phaseRows = phases.map(phase => {
-        const items = plan.items.filter(i => i.phase === phase && i.status !== 'cancelled');
+        const items = pendingItems.filter(i => i.phase === phase);
         let phaseTotal = 0;
         const rows = items.map(item => {
             const net = item.price * (1 - (item.discount ?? 0) / 100);
@@ -492,16 +489,14 @@ export function printTreatmentPlan(
               <td style="text-align:right">${formatMXN(item.price)}</td>
               <td style="text-align:center">${item.discount ? `${item.discount}%` : '—'}</td>
               <td style="text-align:right;font-weight:700">${formatMXN(net)}</td>
-              <td style="text-align:center"><span class="status status-${item.status}">${STATUS_LABELS[item.status] ?? item.status}</span></td>
             </tr>`;
         }).join('');
         return `
-        <tr class="phase-header"><td colspan="8">Fase ${phase}</td></tr>
+        <tr class="phase-header"><td colspan="7">Fase ${phase}</td></tr>
         ${rows}
         <tr class="phase-total">
           <td colspan="6" style="text-align:right">Subtotal Fase ${phase}</td>
           <td style="text-align:right">${formatMXN(phaseTotal)}</td>
-          <td></td>
         </tr>`;
     }).join('');
 
@@ -586,16 +581,16 @@ export function printTreatmentPlan(
     <div class="pfield"><label>Correo</label><span>${patient.email || '—'}</span></div>
   </div>
 
-  <div class="section-title">Detalle de Tratamientos</div>
+  <div class="section-title">Tratamientos Cotizados (Pendientes)</div>
   <table>
     <thead>
       <tr>
         <th>Código</th><th>Tratamiento</th><th>Diente</th><th>Doctor</th>
         <th style="text-align:right">Precio</th><th style="text-align:center">Desc.</th>
-        <th style="text-align:right">Neto</th><th style="text-align:center">Estado</th>
+        <th style="text-align:right">Neto</th>
       </tr>
     </thead>
-    <tbody>${phaseRows}</tbody>
+    <tbody>${phaseRows || `<tr><td colspan="7" style="text-align:center;color:#9ca3af;padding:20px">Sin tratamientos pendientes</td></tr>`}</tbody>
   </table>
 
   <div class="totals">
