@@ -492,8 +492,18 @@ export const Tourism: React.FC = () => {
                                 <h3 className="text-[10px] text-electric uppercase font-bold tracking-widest">Costos Variables (MXN)</h3>
                                 <div className="grid grid-cols-2 gap-3">
                                     <div>
-                                        <label className="text-[10px] text-clinical/40 block mb-1">Tratamiento</label>
-                                        <input title="Campo" type="number" value={params.costoTratamiento} onChange={e => setParams({ ...params, costoTratamiento: Number(e.target.value) })} className="w-full bg-cobalt border border-white/20 rounded-lg px-3 py-1.5 text-sm text-clinical focus:border-electric" />
+                                        <label className="text-[10px] text-clinical/40 block mb-1">
+                                            Tratamiento
+                                            {clinicProfile?.catalogoExtra?.find(t => t.name === params.tratamiento && t.price > 0) && (
+                                                <span className="ml-1 text-electric/60">(catálogo)</span>
+                                            )}
+                                        </label>
+                                        {(() => {
+                                            const locked = clinicProfile?.catalogoExtra?.find(t => t.name === params.tratamiento && t.price > 0);
+                                            return locked
+                                                ? <div className="w-full bg-cobalt/50 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-clinical/60 cursor-not-allowed select-none">${locked.price.toLocaleString('es-MX')}</div>
+                                                : <input title="Campo" type="number" value={params.costoTratamiento} onChange={e => setParams({ ...params, costoTratamiento: Number(e.target.value) })} className="w-full bg-cobalt border border-white/20 rounded-lg px-3 py-1.5 text-sm text-clinical focus:border-electric" />;
+                                        })()}
                                     </div>
                                     <div>
                                         <label className="text-[10px] text-clinical/40 block mb-1">Hospedaje</label>
@@ -638,9 +648,6 @@ export const Tourism: React.FC = () => {
                                                 </div>
                                                 <div className="flex justify-between items-center text-xs text-clinical/80">
                                                     <span>{selectedLang === 'es' ? 'Vuelo internacional' : 'International flight'}</span> <span>${result.costosEstimados.avion.toLocaleString()}</span>
-                                                </div>
-                                                <div className="flex justify-between items-center text-xs text-clinical/80 font-bold pt-2 border-t border-white/5">
-                                                    <span>{selectedLang === 'es' ? 'Ganancia Neta Clínica' : 'Clinic Net Profit'}</span> <span className="text-emerald-400 font-black">${result.costosEstimados.utilidadClinica.toLocaleString()} MXN</span>
                                                 </div>
                                             </div>
                                         </div>
