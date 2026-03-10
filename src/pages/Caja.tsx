@@ -106,8 +106,17 @@ export const Caja: React.FC = () => {
 
     // ── Load ─────────────────────────────────────────────────────────────────
     useEffect(() => {
-        setCaja(getTodayCaja());
-        setHistorial(getAllCajas().filter(d => d.id !== `caja-${new Date().toISOString().split('T')[0]}`));
+        const todaysCaja = getTodayCaja();
+        const todayId = `caja-${new Date().toISOString().split('T')[0]}`;
+        if (todaysCaja?.status === 'open') {
+            // Only show the active caja; closed ones go to historial
+            setCaja(todaysCaja);
+            setHistorial(getAllCajas().filter(d => d.id !== todayId));
+        } else {
+            // Closed or no caja today → opening screen; include closed today in historial
+            setCaja(null);
+            setHistorial(getAllCajas());
+        }
     }, []);
 
     const totals = useMemo(() => caja ? calcTotals(caja) : null, [caja]);
