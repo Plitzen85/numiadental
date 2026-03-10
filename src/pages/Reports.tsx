@@ -3,14 +3,16 @@ import { motion } from 'framer-motion';
 import {
     FileBarChart, Search, Download, Loader2, RefreshCw,
     TrendingUp, DollarSign, Clock, CheckCircle2, AlertCircle,
-    ChevronDown, ChevronUp, Users,
+    ChevronDown, ChevronUp, Users, Landmark, CalendarDays,
+    Banknote, CreditCard, ArrowDownToLine, Bitcoin,
 } from 'lucide-react';
-import { useMarket } from '../context/MarketContext';
-import { loadPatientRecord, PatientRecordData } from '../lib/supabase';
+import { useMarket, isDoctor } from '../context/MarketContext';
+import { loadPatientRecord, PatientRecordData, MetodoPago } from '../lib/supabase';
 import {
     calcularLiquidaciones, primerDiaMes, hoy,
     LiquidacionDoctor, PatientSummaryForLiquidacion,
 } from '../lib/comisionesEngine';
+import { getAllCajas, calcTotals, CajaDay } from '../lib/cajaApi';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -23,11 +25,11 @@ const fmtDate = (iso: string) =>
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export const Reports: React.FC = () => {
-    const { clinicProfile, patients } = useMarket();
+    const { clinicProfile, patients, appointments } = useMarket();
     const staff = clinicProfile?.staff ?? [];
 
     // ── Filters ──────────────────────────────────────────────────────────────
-    const [activeTab, setActiveTab] = useState<'medicos' | 'pacientes' | 'servicios'>('medicos');
+    const [activeTab, setActiveTab] = useState<'medicos' | 'pacientes' | 'servicios' | 'caja' | 'agenda'>('medicos');
     const [search, setSearch] = useState('');
     const [filterDoctor, setFilterDoctor] = useState('');
     const [desde, setDesde] = useState(primerDiaMes());
@@ -112,6 +114,62 @@ export const Reports: React.FC = () => {
             .map(([name, data]) => ({ name, ...data }))
             .sort((a, b) => b.total - a.total);
     }, [patientData, desde, hasta]);
+
+    // ── Caja data ─────────────────────────────────────────────────────────────
+    const cajaData = useMemo(() => {
+        return getAllCajas().filter(c => c.date >= desde && c.date <= hasta);
+    }, [desde, hasta]);
+
+    const cajaTotals = useMemo(() => {
+        const METODOS: MetodoPago[] = ['efectivo','tarjeta_credito','tarjeta_debito','transferencia','cripto'];
+        let ingresos = 0, egresos = 0, retiros = 0;
+        const byMetodo: Record<MetodoPago, number> = { efectivo:0, tarjeta_credito:0, tarjeta_debito:0, transferencia:0, cripto:0 };
+        for (const day of cajaData) {
+            const t = calcTotals(day);
+            ingresos += t.ingresos; egresos += t.egresos; retiros += t.retiros;
+            for (const m of METODOS) byMetodo[m] += t.byMetodo[m] ?? 0;
+        }
+        return { ingresos, egresos, retiros, neto: ingresos - egresos - retiros, byMetodo };
+    }, [cajaData]);
+
+    // ── A/R Aging (cuentas por cobrar) ────────────────────────────────────────
+    const arAging = useMemo(() => {
+        const today = new Date(hoy());
+        const rows: { patientName: string; tratamiento: string; dias: number; monto: number; bucket: string }[] = [];
+        for (const p of patientData) {
+            for (const item of p.treatmentItems) {
+                if (item.status !== 'completed') continue; // only completed-but-not-paid
+                const completedDate = item.completedDate ? new Date(item.completedDate) : null;
+                if (!completedDate) continue;
+                const dias = Math.floor((today.getTime() - completedDate.getTime()) / (1000 * 60 * 60 * 24));
+                const monto = (item.price - item.discount) - (p.payments.reduce((s, pay) => s + (pay.treatmentItemIds.includes(item.id) ? pay.monto : 0), 0));
+                if (monto <= 0) continue;
+                const bucket = dias <= 30 ? '0–30 días' : dias <= 60 ? '31–60 días' : dias <= 90 ? '61–90 días' : '+90 días';
+                rows.push({ patientName: p.patientName, tratamiento: item.name, dias, monto, bucket });
+            }
+        }
+        return rows.sort((a, b) => b.dias - a.dias);
+    }, [patientData]);
+
+    // ── Agenda KPIs ───────────────────────────────────────────────────────────
+    const agendaKPIs = useMemo(() => {
+        const doctors = (clinicProfile?.staff ?? []).filter(isDoctor);
+        const total = appointments.length;
+        const byStatus = (s: string) => appointments.filter(a => a.status === s).length;
+        const confirmed = byStatus('confirmed') + byStatus('arrived') + byStatus('in_chair') + byStatus('completed') + byStatus('billed');
+        const cancelled = byStatus('cancelled');
+        const completed = byStatus('completed') + byStatus('billed');
+        const byDoctor = doctors.map(d => {
+            const appts = appointments.filter(a => a.doctorId === d.id);
+            return {
+                name: d.nombres,
+                total: appts.length,
+                completed: appts.filter(a => a.status === 'completed' || a.status === 'billed').length,
+                cancelled: appts.filter(a => a.status === 'cancelled').length,
+            };
+        });
+        return { total, confirmed, cancelled, completed, confirmRate: total ? Math.round(confirmed/total*100) : 0, cancelRate: total ? Math.round(cancelled/total*100) : 0, completeRate: total ? Math.round(completed/total*100) : 0, byDoctor };
+    }, [appointments, clinicProfile]);
 
     // ── Export CSV ────────────────────────────────────────────────────────────
     const exportCSV = () => {
@@ -257,6 +315,8 @@ export const Reports: React.FC = () => {
                     { id: 'medicos',   label: 'Liquidación Médicos' },
                     { id: 'pacientes', label: 'Cobros de Pacientes' },
                     { id: 'servicios', label: 'Servicios Prestados' },
+                    { id: 'caja',      label: 'Caja' },
+                    { id: 'agenda',    label: 'KPIs Agenda' },
                 ] as const).map(tab => (
                     <button
                         key={tab.id}
@@ -433,6 +493,59 @@ export const Reports: React.FC = () => {
                 </div>
             )}
 
+            {/* ── A/R Aging (dentro de pacientes) ──────── */}
+            {!loading && activeTab === 'pacientes' && arAging.length > 0 && (
+                <div className="mt-6 space-y-3">
+                    <h3 className="text-xs font-bold text-amber-400 uppercase tracking-widest flex items-center gap-2">
+                        <Clock className="w-4 h-4" /> Cuentas por Cobrar — Aging
+                    </h3>
+                    <div className="grid grid-cols-4 gap-3 mb-3">
+                        {(['0–30 días','31–60 días','61–90 días','+90 días'] as const).map((bucket, i) => {
+                            const rows = arAging.filter(r => r.bucket === bucket);
+                            const colors = ['text-emerald-400','text-amber-400','text-orange-400','text-red-400'];
+                            return (
+                                <div key={bucket} className="bg-white/3 border border-white/10 rounded-xl p-3 text-center">
+                                    <p className="text-[10px] text-clinical/40 uppercase font-bold">{bucket}</p>
+                                    <p className={`font-syne font-bold text-lg ${colors[i]}`}>{fmt(rows.reduce((s,r)=>s+r.monto,0))}</p>
+                                    <p className="text-[10px] text-clinical/30">{rows.length} tratamientos</p>
+                                </div>
+                            );
+                        })}
+                    </div>
+                    <div className="bg-white/3 border border-white/10 rounded-2xl overflow-hidden">
+                        <table className="w-full text-left text-sm">
+                            <thead>
+                                <tr className="bg-white/5 text-[10px] uppercase text-clinical/40 tracking-wide">
+                                    <th className="px-5 py-3">Paciente</th>
+                                    <th className="px-5 py-3">Tratamiento</th>
+                                    <th className="px-5 py-3 text-center">Días vencido</th>
+                                    <th className="px-5 py-3 text-right">Pendiente</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {arAging.slice(0,20).map((row, i) => (
+                                    <tr key={i} className="border-t border-white/5 hover:bg-white/3 transition-colors">
+                                        <td className="px-5 py-3 font-bold text-white">{row.patientName}</td>
+                                        <td className="px-5 py-3 text-clinical/70">{row.tratamiento}</td>
+                                        <td className="px-5 py-3 text-center">
+                                            <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${
+                                                row.dias <= 30 ? 'text-emerald-400 border-emerald-500/30 bg-emerald-500/5' :
+                                                row.dias <= 60 ? 'text-amber-400 border-amber-500/30 bg-amber-500/5' :
+                                                row.dias <= 90 ? 'text-orange-400 border-orange-500/30 bg-orange-500/5' :
+                                                'text-red-400 border-red-500/30 bg-red-500/5'
+                                            }`}>
+                                                {row.dias} días
+                                            </span>
+                                        </td>
+                                        <td className="px-5 py-3 text-right text-amber-400 font-bold">{fmt(row.monto)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
             {/* ══════════════ TAB: SERVICIOS ══════════════ */}
             {!loading && activeTab === 'servicios' && (
                 <div>
@@ -470,6 +583,157 @@ export const Reports: React.FC = () => {
                                                             />
                                                         </div>
                                                         <span className="text-xs text-clinical/40 w-8 text-right">{pct.toFixed(0)}%</span>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* ══════════════ TAB: CAJA ══════════════ */}
+            {activeTab === 'caja' && (
+                <div className="space-y-6">
+                    {/* KPI row */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        {[
+                            { label: 'Ingresos', value: cajaTotals.ingresos, icon: <TrendingUp className="w-4 h-4" />, color: 'text-emerald-400 border-emerald-500/30 bg-emerald-500/5' },
+                            { label: 'Egresos',  value: cajaTotals.egresos,  icon: <DollarSign className="w-4 h-4" />, color: 'text-red-400 border-red-500/30 bg-red-500/5' },
+                            { label: 'Retiros',  value: cajaTotals.retiros,  icon: <ArrowDownToLine className="w-4 h-4" />, color: 'text-amber-400 border-amber-500/30 bg-amber-500/5' },
+                            { label: 'Neto',     value: cajaTotals.neto,     icon: <Landmark className="w-4 h-4" />, color: cajaTotals.neto >= 0 ? 'text-electric border-electric/30 bg-electric/5' : 'text-red-400 border-red-500/30 bg-red-500/5' },
+                        ].map(card => (
+                            <div key={card.label} className={`border rounded-2xl p-4 ${card.color}`}>
+                                <div className="flex items-center gap-2 mb-1 opacity-70 text-xs font-bold uppercase">{card.icon}{card.label}</div>
+                                <div className="font-syne text-xl font-bold">{fmt(card.value)}</div>
+                            </div>
+                        ))}
+                    </div>
+                    {/* By método */}
+                    <div className="bg-white/3 border border-white/10 rounded-2xl p-5">
+                        <p className="text-[10px] font-bold text-clinical/40 uppercase tracking-widest mb-3">Ingresos por método de pago</p>
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                            {([
+                                { key: 'efectivo', label: 'Efectivo', icon: <Banknote className="w-4 h-4" /> },
+                                { key: 'tarjeta_credito', label: 'T. Crédito', icon: <CreditCard className="w-4 h-4" /> },
+                                { key: 'tarjeta_debito', label: 'T. Débito', icon: <CreditCard className="w-4 h-4" /> },
+                                { key: 'transferencia', label: 'Transferencia', icon: <ArrowDownToLine className="w-4 h-4" /> },
+                                { key: 'cripto', label: 'Cripto', icon: <Bitcoin className="w-4 h-4" /> },
+                            ] as { key: MetodoPago; label: string; icon: React.ReactNode }[]).map(m => (
+                                <div key={m.key} className="bg-white/5 border border-white/10 rounded-xl p-3 text-center">
+                                    <div className="flex items-center justify-center gap-1 text-clinical/40 mb-1">{m.icon}<span className="text-[10px] uppercase font-bold">{m.label}</span></div>
+                                    <p className="font-syne font-bold text-electric">{fmt(cajaTotals.byMetodo[m.key])}</p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                    {/* Daily table */}
+                    {cajaData.length === 0 ? (
+                        <div className="text-center py-16 text-clinical/25">
+                            <Landmark className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                            <p>Sin registros de caja en este período.</p>
+                        </div>
+                    ) : (
+                        <div className="bg-white/3 border border-white/10 rounded-2xl overflow-hidden">
+                            <table className="w-full text-sm text-left">
+                                <thead>
+                                    <tr className="bg-white/5 text-[10px] uppercase text-clinical/40 tracking-wide">
+                                        <th className="px-5 py-3">Fecha</th>
+                                        <th className="px-5 py-3 text-right">Apertura</th>
+                                        <th className="px-5 py-3 text-right">Ingresos</th>
+                                        <th className="px-5 py-3 text-right">Egresos</th>
+                                        <th className="px-5 py-3 text-right">Neto</th>
+                                        <th className="px-5 py-3 text-center">Estado</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {cajaData.map((c: CajaDay) => {
+                                        const t = calcTotals(c);
+                                        return (
+                                            <tr key={c.id} className="border-t border-white/5 hover:bg-white/3 transition-colors">
+                                                <td className="px-5 py-3 font-bold text-white">{fmtDate(c.date)}</td>
+                                                <td className="px-5 py-3 text-right text-clinical/50">{fmt(c.apertura)}</td>
+                                                <td className="px-5 py-3 text-right text-emerald-400 font-bold">{fmt(t.ingresos)}</td>
+                                                <td className="px-5 py-3 text-right text-red-400">{fmt(t.egresos)}</td>
+                                                <td className="px-5 py-3 text-right font-bold text-electric">{fmt(t.neto)}</td>
+                                                <td className="px-5 py-3 text-center">
+                                                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${c.status === 'closed' ? 'text-emerald-400 border-emerald-500/30 bg-emerald-500/5' : 'text-amber-400 border-amber-500/30 bg-amber-500/5'}`}>
+                                                        {c.status === 'closed' ? 'Cerrada' : 'Abierta'}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                                <tfoot>
+                                    <tr className="bg-white/5 border-t border-white/10 font-bold">
+                                        <td colSpan={2} className="px-5 py-3 text-clinical/50">Total período ({cajaData.length} días)</td>
+                                        <td className="px-5 py-3 text-right text-emerald-400">{fmt(cajaTotals.ingresos)}</td>
+                                        <td className="px-5 py-3 text-right text-red-400">{fmt(cajaTotals.egresos)}</td>
+                                        <td className="px-5 py-3 text-right text-electric">{fmt(cajaTotals.neto)}</td>
+                                        <td />
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* ══════════════ TAB: AGENDA KPIs ══════════════ */}
+            {activeTab === 'agenda' && (
+                <div className="space-y-6">
+                    {/* Summary KPIs */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        {[
+                            { label: 'Total citas', value: agendaKPIs.total, sub: 'en el sistema', color: 'text-electric border-electric/30 bg-electric/5' },
+                            { label: 'Tasa confirmación', value: `${agendaKPIs.confirmRate}%`, sub: `${agendaKPIs.confirmed} confirmadas`, color: 'text-emerald-400 border-emerald-500/30 bg-emerald-500/5' },
+                            { label: 'Tasa cancelación', value: `${agendaKPIs.cancelRate}%`, sub: `${agendaKPIs.cancelled} canceladas`, color: agendaKPIs.cancelRate > 20 ? 'text-red-400 border-red-500/30 bg-red-500/5' : 'text-clinical/50 border-white/10 bg-white/3' },
+                            { label: 'Tasa completadas', value: `${agendaKPIs.completeRate}%`, sub: `${agendaKPIs.completed} completadas`, color: 'text-cyan-400 border-cyan-500/30 bg-cyan-500/5' },
+                        ].map(card => (
+                            <div key={card.label} className={`border rounded-2xl p-4 ${card.color}`}>
+                                <p className="text-[10px] font-bold uppercase opacity-70 mb-1">{card.label}</p>
+                                <p className="font-syne text-2xl font-bold">{card.value}</p>
+                                <p className="text-[11px] opacity-50 mt-0.5">{card.sub}</p>
+                            </div>
+                        ))}
+                    </div>
+                    {/* By doctor */}
+                    {agendaKPIs.byDoctor.length === 0 ? (
+                        <div className="text-center py-16 text-clinical/25">
+                            <CalendarDays className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                            <p>Sin citas registradas.</p>
+                        </div>
+                    ) : (
+                        <div className="bg-white/3 border border-white/10 rounded-2xl overflow-hidden">
+                            <table className="w-full text-sm text-left">
+                                <thead>
+                                    <tr className="bg-white/5 text-[10px] uppercase text-clinical/40 tracking-wide">
+                                        <th className="px-5 py-3">Doctor</th>
+                                        <th className="px-5 py-3 text-center">Total citas</th>
+                                        <th className="px-5 py-3 text-center">Completadas</th>
+                                        <th className="px-5 py-3 text-center">Canceladas</th>
+                                        <th className="px-5 py-3">% Éxito</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {agendaKPIs.byDoctor.map(d => {
+                                        const pct = d.total ? Math.round(d.completed/d.total*100) : 0;
+                                        return (
+                                            <tr key={d.name} className="border-t border-white/5 hover:bg-white/3 transition-colors">
+                                                <td className="px-5 py-3 font-bold text-white">{d.name}</td>
+                                                <td className="px-5 py-3 text-center text-clinical/70">{d.total}</td>
+                                                <td className="px-5 py-3 text-center text-cyan-400 font-bold">{d.completed}</td>
+                                                <td className="px-5 py-3 text-center text-red-400">{d.cancelled}</td>
+                                                <td className="px-5 py-3">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                                                            <div className="h-full bg-electric rounded-full" ref={el => { if (el) el.style.width = `${pct}%`; }} />
+                                                        </div>
+                                                        <span className="text-xs text-clinical/40 w-8 text-right">{pct}%</span>
                                                     </div>
                                                 </td>
                                             </tr>
