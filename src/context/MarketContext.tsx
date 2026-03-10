@@ -137,6 +137,21 @@ export interface ClinicProfile {
     aseguradoras?: DirectoryEntity[];
     patients?: Patient[]; // Persisted patient list
     whatsappTemplate?: string; // Configurable reminder template
+    identidadCorporativa?: {
+        logo?: string;           // Base64 or URL
+        slogan?: string;
+        colorPrimario?: string;  // hex e.g. '#00d4ff'
+        website?: string;
+        facebook?: string;
+        instagram?: string;
+        whatsapp?: string;
+        twitter?: string;
+        tiktok?: string;
+        pieDePagina?: string;     // Custom footer text for PDFs
+        direccionDocumentos?: string;
+        telefonoDocumentos?: string;
+        emailDocumentos?: string;
+    };
 }
 
 export interface Competitor {

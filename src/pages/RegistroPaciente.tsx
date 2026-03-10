@@ -4,7 +4,7 @@ import { Printer, CheckCircle2, AlertTriangle, Loader2, ClipboardList, User, Lis
 import { loadClinicProfile, loadPatientRecord, CLINIC_ID, supabase } from '../lib/supabase';
 import { TreatmentPlanItem, TreatmentStatus } from '../lib/supabase';
 import { ClinicProfile, Patient } from '../context/MarketContext';
-import { printPatientRecord } from '../utils/patientPrint';
+import { printPatientRecord, printConsentDocument } from '../utils/patientPrint';
 
 // ─── Pre-registration form state ─────────────────────────────────────────────
 interface PreRegForm {
@@ -194,6 +194,12 @@ export const RegistroPaciente: React.FC = () => {
 
             setConsentDate(dateStr);
             setConsentSaved(true);
+            // Auto-open consent PDF so the patient can save/print it
+            printConsentDocument(
+                `${patient.nombres} ${patient.apellidos}`,
+                clinicName,
+                consentPayload,
+            );
         } catch (err) {
             console.error('Failed to save consent:', err);
         } finally {
@@ -246,7 +252,7 @@ export const RegistroPaciente: React.FC = () => {
                     {patient && (
                         <button
                             type="button"
-                            onClick={() => printPatientRecord(patient, clinicName)}
+                            onClick={() => printPatientRecord(patient, clinicName, undefined, undefined, form)}
                             className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#00d4ff] transition-colors border border-gray-200 hover:border-[#00d4ff]/40 px-3 py-1.5 rounded-lg"
                         >
                             <Printer className="w-4 h-4" /> Imprimir
@@ -522,6 +528,13 @@ export const RegistroPaciente: React.FC = () => {
                             <p className="text-xs text-emerald-600/70 pt-2">
                                 Este consentimiento quedó registrado en tu expediente clínico.
                             </p>
+                            <button
+                                type="button"
+                                onClick={() => patient && printConsentDocument(`${patient.nombres} ${patient.apellidos}`, clinicName, { checks: consentChecks, name: consentName, date: consentDate })}
+                                className="inline-flex items-center gap-2 mt-2 px-4 py-2 rounded-lg border border-emerald-300 text-emerald-700 text-sm font-semibold hover:bg-emerald-100 transition-colors"
+                            >
+                                <Printer className="w-4 h-4" /> Imprimir / Guardar PDF
+                            </button>
                         </div>
                     ) : (
                         <form onSubmit={handleConsentSubmit} className="space-y-5">

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
     User, Activity, FileText, BriefcaseMedical, Camera,
     Sparkles, Trash2, Loader2, CheckCircle2, Plus, Layers,
-    AlertTriangle, ShieldAlert, Printer, Link2, Landmark,
+    AlertTriangle, ShieldAlert, Printer, Link2, Landmark, FileSignature,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { AIClinicalViewer } from './AIClinicalViewer';
@@ -12,7 +12,7 @@ import { VisitRecord } from './patient/VisitRecord';
 import { TreatmentPipeline } from './patient/TreatmentPipeline';
 import { PatientFinanzas } from './patient/PatientFinanzas';
 import { useMarket } from '../context/MarketContext';
-import { printPatientRecord, getOrCreateToken } from '../utils/patientPrint';
+import { printPatientRecord, printConsentDocument, getOrCreateToken } from '../utils/patientPrint';
 import {
     loadPatientRecord, savePatientRecord, uploadPatientFile, deletePatientFile,
     PatientMedicalHistory, PatientFile,
@@ -90,6 +90,9 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patie
     const [isUploadingFile, setIsUploadingFile] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    // ── Consent state ────────────────────────────────────────────────────────
+    const [consentData, setConsentData] = useState<{ checks: boolean[]; name: string; date: string } | null>(null);
+
     // ── Visits & Treatment Plan state ────────────────────────────────────────
     const [visits, setVisits] = useState<PatientVisit[]>([]);
     const [treatmentPlan, setTreatmentPlan] = useState<TreatmentPlan>({ items: [], notes: '', updatedAt: '' });
@@ -107,6 +110,7 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patie
             setVisits(record.visits ?? []);
             setTreatmentPlan(record.treatmentPlan ?? { items: [], notes: '', updatedAt: '' });
             setPayments(record.payments ?? []);
+            setConsentData(record._consentimiento ?? null);
             // pre-select most recent visit
             if (record.visits?.length) {
                 const sorted = [...record.visits].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -407,6 +411,43 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patie
                                                 />
                                             </div>
                                         </div>
+                                    </div>
+
+                                    {/* Consent section */}
+                                    <div className="pt-6 border-t border-white/10">
+                                        <div className="flex items-center justify-between mb-3">
+                                            <h3 className="font-syne text-lg text-white flex items-center gap-2">
+                                                <FileSignature className="w-5 h-5 text-electric" /> Consentimiento Informado
+                                            </h3>
+                                        </div>
+                                        {consentData ? (
+                                            <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                                                <div>
+                                                    <p className="text-emerald-400 font-bold text-sm flex items-center gap-2">
+                                                        <CheckCircle2 className="w-4 h-4" /> Consentimiento firmado digitalmente
+                                                    </p>
+                                                    <p className="text-emerald-300/70 text-xs mt-1">
+                                                        Firmado por: <strong className="text-emerald-300">{consentData.name}</strong>
+                                                    </p>
+                                                    {consentData.date && (
+                                                        <p className="text-emerald-400/50 text-[10px] mt-0.5">{consentData.date}</p>
+                                                    )}
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => patient && printConsentDocument(`${patient.nombres} ${patient.apellidos}`, clinicProfile?.nombre ?? 'Nümia Dental', consentData)}
+                                                    className="flex items-center gap-2 text-xs font-bold px-4 py-2 rounded-xl border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/20 transition-all whitespace-nowrap"
+                                                >
+                                                    <Printer className="w-3.5 h-3.5" /> Ver / Imprimir
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div className="bg-white/5 border border-white/10 rounded-2xl p-5 text-center">
+                                                <FileSignature className="w-8 h-8 text-clinical/20 mx-auto mb-2" />
+                                                <p className="text-clinical/40 text-sm">Sin consentimiento registrado</p>
+                                                <p className="text-clinical/30 text-xs mt-1">El paciente puede firmarlo desde su portal de registro</p>
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* Global files section */}

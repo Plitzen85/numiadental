@@ -188,6 +188,8 @@ export interface PatientRecordData {
     treatmentPlan: TreatmentPlan;
     payments: PatientPayment[];     // All cobros registered for this patient
     clinicalFormState?: Record<string, string>; // Full clinical questionnaire from PatientProfileForm
+    _consentimiento?: { checks: boolean[]; name: string; date: string }; // Digital consent from patient portal
+    _preregistro?: Record<string, string>; // Pre-registration form from patient portal
 }
 
 const DEFAULT_PATIENT_RECORD: PatientRecordData = {
