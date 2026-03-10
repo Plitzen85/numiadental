@@ -246,7 +246,7 @@ export const Caja: React.FC = () => {
                     <button
                         type="button"
                         onClick={() => setShowCierre(true)}
-                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-red-500/30 bg-red-500/5 text-red-400 hover:bg-red-500/10 transition-colors font-bold text-sm"
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-red-500/15 border border-red-500/40 text-red-400 hover:bg-red-500/25 transition-colors font-bold text-sm"
                     >
                         <Lock className="w-4 h-4" /> Cerrar Caja
                     </button>
@@ -445,6 +445,34 @@ export const Caja: React.FC = () => {
                             </div>
                         )}
                     </div>
+
+                    {/* ── Terminar el Día (solo cuando está abierta) ───────── */}
+                    {caja.status === 'open' && (
+                        <div className="border-t border-white/10 pt-6">
+                            <div className="bg-gradient-to-br from-red-500/8 to-transparent border border-red-500/20 rounded-2xl p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                                <div>
+                                    <h3 className="font-syne text-base font-bold text-white mb-1 flex items-center gap-2">
+                                        <Lock className="w-4 h-4 text-red-400" /> Terminar el Día — Hacer Corte
+                                    </h3>
+                                    <p className="text-xs text-clinical/40 max-w-sm">
+                                        Cierra la caja del día, registra el efectivo contado y genera el corte. Podrás reabrir si necesitas hacer una corrección.
+                                    </p>
+                                    <div className="flex gap-4 mt-3 text-xs font-bold">
+                                        <span className="text-emerald-400">Ingresos {fmt(totals.ingresos)}</span>
+                                        <span className="text-red-400">Egresos {fmt(totals.egresos)}</span>
+                                        <span className="text-electric">Neto {fmt(totals.neto)}</span>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowCierre(true)}
+                                    className="flex items-center gap-2 px-6 py-3 rounded-xl bg-red-500 hover:bg-red-600 text-white font-black text-sm transition-colors shadow-[0_0_20px_rgba(239,68,68,0.25)] flex-shrink-0"
+                                >
+                                    <Lock className="w-4 h-4" /> Hacer Corte del Día
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </>
             )}
 
