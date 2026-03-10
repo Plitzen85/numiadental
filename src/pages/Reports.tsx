@@ -151,6 +151,15 @@ export const Reports: React.FC = () => {
         return rows.sort((a, b) => b.dias - a.dias);
     }, [patientData]);
 
+    // ── Pacientes inactivos (+6 meses sin visita) ─────────────────────────────
+    const inactivosSeisMeses = useMemo(() => {
+        const cutoff = new Date();
+        cutoff.setMonth(cutoff.getMonth() - 6);
+        return patients
+            .filter(p => !p.ultimaVisita || new Date(p.ultimaVisita) < cutoff)
+            .sort((a, b) => (a.ultimaVisita ?? '').localeCompare(b.ultimaVisita ?? ''));
+    }, [patients]);
+
     // ── Agenda KPIs ───────────────────────────────────────────────────────────
     const agendaKPIs = useMemo(() => {
         const doctors = (clinicProfile?.staff ?? []).filter(isDoctor);
@@ -546,19 +555,18 @@ export const Reports: React.FC = () => {
                 </div>
             )}
 
-            {/* ── Pacientes sin cita (>6 meses) ────────── */}
-            {!loading && activeTab === 'pacientes' && (() => {
-                const sixMonthsAgo = new Date();
-                sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-                const inactivos = patients
-                    .filter(p => !p.ultimaVisita || new Date(p.ultimaVisita) < sixMonthsAgo)
-                    .sort((a, b) => (a.ultimaVisita ?? '').localeCompare(b.ultimaVisita ?? ''));
-                if (inactivos.length === 0) return null;
-                return (
-                    <div className="mt-6 space-y-3">
-                        <h3 className="text-xs font-bold text-orange-400 uppercase tracking-widest flex items-center gap-2">
-                            <Users className="w-4 h-4" /> Pacientes inactivos — Sin cita en +6 meses ({inactivos.length})
-                        </h3>
+            {/* ── Pacientes sin cita (+6 meses) ────────── */}
+            {!loading && activeTab === 'pacientes' && (
+                <div className="mt-6 space-y-3">
+                    <h3 className="text-xs font-bold text-orange-400 uppercase tracking-widest flex items-center gap-2">
+                        <Users className="w-4 h-4" /> Pacientes inactivos — Sin cita en +6 meses
+                        <span className="font-syne text-base font-black text-orange-400/80">{inactivosSeisMeses.length}</span>
+                    </h3>
+                    {inactivosSeisMeses.length === 0 ? (
+                        <div className="bg-white/3 border border-white/10 rounded-2xl px-5 py-8 text-center text-clinical/30 text-sm">
+                            Todos los pacientes han tenido una cita en los últimos 6 meses.
+                        </div>
+                    ) : (
                         <div className="bg-white/3 border border-white/10 rounded-2xl overflow-hidden">
                             <table className="w-full text-left text-sm">
                                 <thead>
@@ -570,14 +578,16 @@ export const Reports: React.FC = () => {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {inactivos.slice(0, 30).map(p => {
+                                    {inactivosSeisMeses.slice(0, 30).map(p => {
                                         const last = p.ultimaVisita ? new Date(p.ultimaVisita) : null;
                                         const dias = last ? Math.floor((Date.now() - last.getTime()) / (1000 * 60 * 60 * 24)) : null;
                                         return (
                                             <tr key={p.id} className="border-t border-white/5 hover:bg-white/3 transition-colors">
                                                 <td className="px-5 py-3 font-bold text-white">{p.nombres} {p.apellidos}</td>
                                                 <td className="px-5 py-3 text-clinical/50">{p.telefono ?? '—'}</td>
-                                                <td className="px-5 py-3 text-clinical/50">{last ? last.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Sin registro'}</td>
+                                                <td className="px-5 py-3 text-clinical/50">
+                                                    {last ? last.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Sin registro'}
+                                                </td>
                                                 <td className="px-5 py-3 text-center">
                                                     <span className="text-[11px] font-bold px-2 py-0.5 rounded-full border text-orange-400 border-orange-500/30 bg-orange-500/5">
                                                         {dias !== null ? `${dias} días` : 'N/A'}
@@ -589,9 +599,9 @@ export const Reports: React.FC = () => {
                                 </tbody>
                             </table>
                         </div>
-                    </div>
-                );
-            })()}
+                    )}
+                </div>
+            )}
 
             {/* ══════════════ TAB: SERVICIOS ══════════════ */}
             {!loading && activeTab === 'servicios' && (

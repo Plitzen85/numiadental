@@ -1,12 +1,103 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
-    Save, Trash2, Camera, Loader2, Pill, FileText, Heart, X, Plus,
+    Save, Trash2, Camera, Loader2, Pill, FileText, Heart, X, Plus, Search,
 } from 'lucide-react';
 import {
     PatientVisit, PatientFile, PrescriptionMedication, VisitStatus,
     uploadPatientFile, deletePatientFile,
 } from '../../lib/supabase';
 import { printPrescription } from '../../utils/patientPrint';
+
+// ─── Vademecum autocomplete ───────────────────────────────────────────────────
+
+interface DrugSuggestion { name: string; strength: string }
+
+const MedicationNameInput: React.FC<{
+    value: string;
+    onChange: (name: string, strength?: string) => void;
+}> = ({ value, onChange }) => {
+    const [query, setQuery] = useState(value);
+    const [suggestions, setSuggestions] = useState<DrugSuggestion[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [open, setOpen] = useState(false);
+    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const wrapRef = useRef<HTMLDivElement>(null);
+
+    // Sync external value changes (e.g. template fill)
+    useEffect(() => { setQuery(value); }, [value]);
+
+    // Close dropdown on outside click
+    useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, []);
+
+    const search = useCallback(async (term: string) => {
+        if (term.length < 2) { setSuggestions([]); setOpen(false); return; }
+        setLoading(true);
+        try {
+            const url = `https://clinicaltables.nlm.nih.gov/api/rxterms/v3/search?terms=${encodeURIComponent(term)}&ef=STRENGTHS_AND_FORMS&maxList=8`;
+            const res = await fetch(url);
+            const data: [number, string[], { STRENGTHS_AND_FORMS?: string[][] }, string[]] = await res.json();
+            const names = data[3] ?? [];
+            const strengths = data[2]?.STRENGTHS_AND_FORMS ?? [];
+            const list: DrugSuggestion[] = names.map((n, i) => ({
+                name: n,
+                strength: strengths[i]?.[0] ?? '',
+            }));
+            setSuggestions(list);
+            setOpen(list.length > 0);
+        } catch { /* network error — silently ignore */ }
+        setLoading(false);
+    }, []);
+
+    const handleInput = (val: string) => {
+        setQuery(val);
+        onChange(val);
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        debounceRef.current = setTimeout(() => search(val), 300);
+    };
+
+    const select = (s: DrugSuggestion) => {
+        setQuery(s.name);
+        onChange(s.name, s.strength);
+        setSuggestions([]);
+        setOpen(false);
+    };
+
+    return (
+        <div ref={wrapRef} className="relative w-full">
+            <div className="relative">
+                <input
+                    type="text"
+                    value={query}
+                    onChange={e => handleInput(e.target.value)}
+                    onFocus={() => suggestions.length > 0 && setOpen(true)}
+                    placeholder="Nombre del medicamento"
+                    className="w-full border-0 border-b border-gray-200 bg-transparent px-0 py-1 text-sm font-bold text-gray-800 focus:outline-none focus:border-gray-400 placeholder:text-gray-300 pr-5"
+                />
+                {loading
+                    ? <Loader2 className="absolute right-0 top-1.5 w-3.5 h-3.5 text-gray-300 animate-spin" />
+                    : <Search className="absolute right-0 top-1.5 w-3.5 h-3.5 text-gray-200" />
+                }
+            </div>
+            {open && suggestions.length > 0 && (
+                <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden">
+                    {suggestions.map((s, i) => (
+                        <button key={i} type="button" onMouseDown={() => select(s)}
+                            className="w-full text-left px-3 py-2 hover:bg-blue-50 transition-colors border-b border-gray-50 last:border-0 flex flex-col gap-0.5">
+                            <span className="text-sm font-bold text-gray-800">{s.name}</span>
+                            {s.strength && <span className="text-[10px] text-gray-400">{s.strength}</span>}
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
 
 // ─── Status config ────────────────────────────────────────────────────────────
 const VISIT_STATUS_CONFIG: Record<VisitStatus, { label: string; dot: string }> = {
@@ -256,12 +347,11 @@ export const VisitRecord: React.FC<VisitRecordProps> = ({
                                     <button onClick={() => removeMedication(idx)} className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-all">
                                         <X className="w-3.5 h-3.5" />
                                     </button>
-                                    <input
-                                        type="text"
+                                    <MedicationNameInput
                                         value={med.name}
-                                        onChange={e => updateMedication(idx, { name: e.target.value })}
-                                        placeholder="Nombre del medicamento"
-                                        className="w-full border-0 border-b border-gray-200 bg-transparent px-0 py-1 text-sm font-bold text-gray-800 focus:outline-none focus:border-gray-400 placeholder:text-gray-300"
+                                        onChange={(name, strength) =>
+                                            updateMedication(idx, strength ? { name, dose: strength } : { name })
+                                        }
                                     />
                                     <div className="grid grid-cols-3 gap-2">
                                         <input type="text" value={med.dose}      onChange={e => updateMedication(idx, { dose: e.target.value })}      placeholder="Dosis"      className="border border-gray-200 rounded-lg px-2 py-1 text-xs text-gray-700 focus:border-gray-400 outline-none" />
