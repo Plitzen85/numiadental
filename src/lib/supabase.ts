@@ -173,6 +173,7 @@ export interface TreatmentPlan {
     items: TreatmentPlanItem[];
     notes: string;
     updatedAt: string;
+    createdAt?: string;  // ISO date when the plan was first created (used for validity window)
 }
 
 export interface PatientRecordData {

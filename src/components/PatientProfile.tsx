@@ -579,7 +579,7 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patie
                                             Plan médico completo con seguimiento por fases
                                         </span>
                                     </div>
-                                    <TreatmentPipeline plan={treatmentPlan} onSave={handleSaveTreatmentPlan} />
+                                    <TreatmentPipeline plan={treatmentPlan} onSave={handleSaveTreatmentPlan} patient={patient} clinicName={clinicProfile?.nombre ?? 'Nümia Dental'} />
                                 </div>
                             )}
 

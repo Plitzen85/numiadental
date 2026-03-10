@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Plus, Trash2, Edit2, Check, Clock, XCircle, AlertCircle, Loader2, DollarSign, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, Edit2, Check, Clock, XCircle, AlertCircle, Loader2, DollarSign, ChevronDown, ChevronRight, Printer, CalendarClock } from 'lucide-react';
 import { TreatmentPlan, TreatmentPlanItem, TreatmentStatus } from '../../lib/supabase';
-import { useMarket, StaffMember, isDoctor } from '../../context/MarketContext';
+import { useMarket, StaffMember, isDoctor, Patient } from '../../context/MarketContext';
+import { printTreatmentPlan } from '../../utils/patientPrint';
 
 // ─── Status config ────────────────────────────────────────────────────────────
 const STATUS_CONFIG: Record<TreatmentStatus, {
@@ -34,10 +35,12 @@ const blankItem = (): Partial<TreatmentPlanItem> => ({
 interface TreatmentPipelineProps {
     plan: TreatmentPlan;
     onSave: (plan: TreatmentPlan) => Promise<void>;
+    patient?: Patient;
+    clinicName?: string;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
-export const TreatmentPipeline: React.FC<TreatmentPipelineProps> = ({ plan, onSave }) => {
+export const TreatmentPipeline: React.FC<TreatmentPipelineProps> = ({ plan, onSave, patient, clinicName = 'Nümia Dental' }) => {
     const { clinicProfile } = useMarket();
     const doctors: StaffMember[] = (clinicProfile?.staff ?? []).filter(isDoctor);
 
@@ -61,9 +64,11 @@ export const TreatmentPipeline: React.FC<TreatmentPipelineProps> = ({ plan, onSa
     const savePlan = (items: TreatmentPlanItem[], notes = planNotes) => {
         // Update UI immediately
         setLocalItems(items);
+        // Preserve existing createdAt, or stamp it on first save
+        const createdAt = plan.createdAt ?? new Date().toISOString();
         // Persist in background (no await — don't block UI)
         setIsSaving(true);
-        onSave({ items, notes, updatedAt: new Date().toISOString() })
+        onSave({ items, notes, updatedAt: new Date().toISOString(), createdAt })
             .finally(() => setIsSaving(false));
     };
 
@@ -115,8 +120,37 @@ export const TreatmentPipeline: React.FC<TreatmentPipelineProps> = ({ plan, onSa
     const progress       = totalPlan > 0 ? (totalCompleted / totalPlan) * 100 : 0;
     const cancelledItems = localItems.filter(i => i.status === 'cancelled');
 
+    // Validity date helpers — use createdAt if available, otherwise today as reference
+    const createdAtDate = new Date(plan.createdAt ?? new Date().toISOString());
+    const validUntilDate = new Date(new Date(createdAtDate).setDate(createdAtDate.getDate() + 15));
+    const fmtDate = (d: Date) => d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
+
     return (
         <div className="space-y-5">
+
+            {/* ── Validity + Print header ──────────────────────────────────── */}
+            <div className="flex items-center justify-between bg-white/4 border border-white/10 rounded-xl px-4 py-2.5">
+                <div className="flex items-center gap-4 text-xs text-clinical/60">
+                    <span className="flex items-center gap-1.5">
+                        <CalendarClock className="w-3.5 h-3.5 text-electric/60" />
+                        Emisión: <span className="text-clinical font-semibold">{fmtDate(createdAtDate)}</span>
+                    </span>
+                    <span className="text-white/20">|</span>
+                    <span className="flex items-center gap-1.5 text-amber-400/80">
+                        Válido hasta: <span className="font-semibold">{fmtDate(validUntilDate)}</span>
+                        <span className="text-[9px] text-clinical/30">(15 días)</span>
+                    </span>
+                </div>
+                {patient && (
+                    <button
+                        type="button"
+                        onClick={() => printTreatmentPlan(patient, plan, clinicName)}
+                        className="flex items-center gap-1.5 text-xs font-bold text-electric border border-electric/30 rounded-lg px-3 py-1.5 hover:bg-electric/10 transition-colors"
+                    >
+                        <Printer className="w-3.5 h-3.5" /> Imprimir Presupuesto
+                    </button>
+                )}
+            </div>
 
             {/* ── Summary bar ─────────────────────────────────────────────── */}
             <div className="grid grid-cols-4 gap-3">

@@ -119,6 +119,7 @@ export interface ClinicProfile {
     telefono?: string;
     email?: string;
     medicoResponsable?: string;
+    cedProfesional?: string;
     redesSociales?: {
         facebook?: string;
         instagram?: string;

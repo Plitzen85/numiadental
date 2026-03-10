@@ -47,6 +47,7 @@ export const Settings: React.FC = () => {
         telefono: clinicProfile?.telefono || '',
         email: clinicProfile?.email || '',
         medicoResponsable: clinicProfile?.medicoResponsable || '',
+        cedProfesional: clinicProfile?.cedProfesional || '',
         redesSociales: {
             facebook: clinicProfile?.redesSociales?.facebook || '',
             instagram: clinicProfile?.redesSociales?.instagram || '',
@@ -418,10 +419,17 @@ export const Settings: React.FC = () => {
                                     onChange={e => setFormData({ ...formData, email: e.target.value })}
                                     className="w-full bg-cobalt border border-white/20 rounded-lg px-4 py-2 text-clinical focus:outline-none focus:border-electric" />
                             </div>
-                            <div className="md:col-span-2">
+                            <div>
                                 <label className="text-sm text-clinical/60 block mb-2">Médico Responsable</label>
-                                <input title="Médico" type="text" value={formData.medicoResponsable}
+                                <input title="Médico Responsable" type="text" value={formData.medicoResponsable}
                                     onChange={e => setFormData({ ...formData, medicoResponsable: e.target.value })}
+                                    className="w-full bg-cobalt border border-white/20 rounded-lg px-4 py-2 text-clinical focus:outline-none focus:border-electric" />
+                            </div>
+                            <div>
+                                <label className="text-sm text-clinical/60 block mb-2">Cédula Profesional</label>
+                                <input title="Cédula Profesional" type="text" value={formData.cedProfesional ?? ''}
+                                    onChange={e => setFormData({ ...formData, cedProfesional: e.target.value })}
+                                    placeholder="Ej. 12345678"
                                     className="w-full bg-cobalt border border-white/20 rounded-lg px-4 py-2 text-clinical focus:outline-none focus:border-electric" />
                             </div>
                         </div>

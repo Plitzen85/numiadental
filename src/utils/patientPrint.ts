@@ -1,5 +1,5 @@
 import { Patient } from '../context/MarketContext';
-import { PatientMedicalHistory } from '../lib/supabase';
+import { PatientMedicalHistory, TreatmentPlan } from '../lib/supabase';
 
 // ─── Branding helpers ─────────────────────────────────────────────────────────
 
@@ -17,6 +17,9 @@ interface ClinicBranding {
     direccionDocumentos?: string;
     telefonoDocumentos?: string;
     emailDocumentos?: string;
+    // From clinic root profile
+    medicoResponsable?: string;
+    cedProfesional?: string;
 }
 
 function getClinicBranding(): ClinicBranding | null {
@@ -24,14 +27,19 @@ function getClinicBranding(): ClinicBranding | null {
         const raw = localStorage.getItem('clinicProfile');
         if (!raw) return null;
         const profile = JSON.parse(raw);
-        return profile?.identidadCorporativa ?? null;
+        const id = profile?.identidadCorporativa ?? {};
+        return {
+            ...id,
+            medicoResponsable: profile?.medicoResponsable,
+            cedProfesional: profile?.cedProfesional,
+        };
     } catch { return null; }
 }
 
 function buildBrandedHeader(clinicName: string, branding: ClinicBranding | null): string {
     const color = branding?.colorPrimario ?? '#00d4ff';
     const logoHtml = branding?.logo
-        ? `<img src="${branding.logo}" alt="${clinicName}" style="max-height:60px;max-width:160px;object-fit:contain;" />`
+        ? `<img src="${branding.logo}" alt="${clinicName}" style="max-height:84px;max-width:224px;object-fit:contain;" />`
         : `<div style="font-size:26px;font-weight:900;letter-spacing:3px;color:${color};">${clinicName.toUpperCase()}</div>`;
 
     const socialLinks: string[] = [];
@@ -52,8 +60,10 @@ function buildBrandedHeader(clinicName: string, branding: ClinicBranding | null)
 
 function buildBrandedFooter(clinicName: string, branding: ClinicBranding | null): string {
     const left = branding?.pieDePagina ?? `${clinicName} — Documento generado digitalmente con fines de registro clínico`;
-    const right = 'Información confidencial — Uso interno y del paciente · COFEPRIS';
-    return `<span>${left}</span><span>${right}</span>`;
+    const parts: string[] = ['Información confidencial — Uso interno y del paciente · COFEPRIS'];
+    if (branding?.medicoResponsable) parts.push(`Dr(a). ${branding.medicoResponsable}`);
+    if (branding?.cedProfesional) parts.push(`Céd. Prof. ${branding.cedProfesional}`);
+    return `<span>${left}</span><span>${parts.join('  ·  ')}</span>`;
 }
 
 export interface PreRegistroData {
@@ -435,4 +445,180 @@ export function printConsentDocument(
     win.document.close();
     win.focus();
     setTimeout(() => { win.print(); }, 600);
+}
+
+// ─── Treatment plan / Presupuesto print ───────────────────────────────────────
+
+export function printTreatmentPlan(
+    patient: Patient,
+    plan: TreatmentPlan,
+    clinicName = 'Nümia Dental',
+) {
+    const branding = getClinicBranding();
+    const brandColor = branding?.colorPrimario ?? '#00d4ff';
+
+    const emisionDate = plan.createdAt ? new Date(plan.createdAt) : new Date();
+    const validDate = new Date(emisionDate);
+    validDate.setDate(validDate.getDate() + 15);
+
+    const fmt = (d: Date) => d.toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' });
+
+    const phases = [...new Set(plan.items.filter(i => i.status !== 'cancelled').map(i => i.phase))].sort();
+
+    const STATUS_LABELS: Record<string, string> = {
+        pending: 'Pendiente', in_progress: 'En Proceso',
+        completed: 'Completado', paid: 'Pagado', cancelled: 'Cancelado',
+    };
+
+    const formatMXN = (n: number) => `$${n.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+    let grandTotal = 0;
+    let grandDiscount = 0;
+
+    const phaseRows = phases.map(phase => {
+        const items = plan.items.filter(i => i.phase === phase && i.status !== 'cancelled');
+        let phaseTotal = 0;
+        const rows = items.map(item => {
+            const net = item.price * (1 - (item.discount ?? 0) / 100);
+            phaseTotal += net;
+            grandTotal += net;
+            grandDiscount += item.price * (item.discount ?? 0) / 100;
+            return `
+            <tr>
+              <td>${item.code || ''}</td>
+              <td>${item.name}</td>
+              <td>${item.toothNumber ? `#${item.toothNumber}` : '—'}</td>
+              <td>${item.doctorName || '—'}</td>
+              <td style="text-align:right">${formatMXN(item.price)}</td>
+              <td style="text-align:center">${item.discount ? `${item.discount}%` : '—'}</td>
+              <td style="text-align:right;font-weight:700">${formatMXN(net)}</td>
+              <td style="text-align:center"><span class="status status-${item.status}">${STATUS_LABELS[item.status] ?? item.status}</span></td>
+            </tr>`;
+        }).join('');
+        return `
+        <tr class="phase-header"><td colspan="8">Fase ${phase}</td></tr>
+        ${rows}
+        <tr class="phase-total">
+          <td colspan="6" style="text-align:right">Subtotal Fase ${phase}</td>
+          <td style="text-align:right">${formatMXN(phaseTotal)}</td>
+          <td></td>
+        </tr>`;
+    }).join('');
+
+    const doctorSig = branding?.medicoResponsable
+        ? `Dr(a). ${branding.medicoResponsable}${branding.cedProfesional ? ` — Céd. ${branding.cedProfesional}` : ''}`
+        : 'Médico Tratante';
+
+    const presupHtml = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Presupuesto — ${patient.nombres} ${patient.apellidos}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Helvetica Neue',Arial,sans-serif;font-size:12px;color:#1a1a2e;line-height:1.6;background:#fff}
+    .page{max-width:900px;margin:0 auto;padding:40px 36px}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid ${brandColor};padding-bottom:20px;margin-bottom:28px}
+    .logo{font-size:26px;font-weight:900;letter-spacing:3px;color:${brandColor}}
+    .logo-sub{font-size:10px;color:#888;letter-spacing:1px;text-transform:uppercase;margin-top:2px}
+    .meta{text-align:right;font-size:11px;color:#666;line-height:1.8}
+    .meta strong{color:#1a1a2e;font-size:13px}
+    .validity-block{display:flex;gap:16px;margin-bottom:24px}
+    .validity-card{flex:1;border:1.5px solid #e5e7eb;border-radius:8px;padding:12px 16px;background:#f9fafb}
+    .validity-card.valid-until{border-color:${brandColor};background:rgba(0,212,255,0.06)}
+    .validity-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#9ca3af;display:block;margin-bottom:4px}
+    .validity-value{font-size:13px;font-weight:700;color:#1a1a2e}
+    .validity-card.valid-until .validity-value{color:${brandColor}}
+    .patient-block{border:1px solid #e5e7eb;border-radius:8px;padding:14px 18px;margin-bottom:24px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px;background:#f9fafb}
+    .pfield label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#9ca3af;display:block;margin-bottom:2px}
+    .pfield span{font-size:12px;font-weight:600;color:#111827}
+    .section-title{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:${brandColor};padding-bottom:6px;border-bottom:1px solid #e5e7eb;margin-bottom:14px}
+    table{width:100%;border-collapse:collapse;margin-bottom:24px}
+    th{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#9ca3af;text-align:left;padding:8px 6px;border-bottom:2px solid #e5e7eb}
+    td{padding:7px 6px;border-bottom:1px solid #f3f4f6;font-size:11px;color:#374151;vertical-align:middle}
+    tr.phase-header td{background:rgba(0,212,255,0.1);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:${brandColor};padding:6px 8px}
+    tr.phase-total td{background:#f3f4f6;font-size:11px;color:#374151;font-weight:600;padding:6px}
+    .status{font-size:9px;font-weight:700;padding:2px 7px;border-radius:12px;text-transform:uppercase}
+    .status-pending{background:#fef9c3;color:#854d0e}
+    .status-in_progress{background:#dbeafe;color:#1e40af}
+    .status-completed{background:#d1fae5;color:#065f46}
+    .status-paid{background:#ccfbf1;color:#0f766e}
+    .totals{border:2px solid ${brandColor};border-radius:10px;padding:16px 20px;margin-bottom:28px;max-width:320px;margin-left:auto}
+    .totals-row{display:flex;justify-content:space-between;padding:5px 0;font-size:12px;color:#374151;border-bottom:1px solid #f3f4f6}
+    .totals-row:last-child{border-bottom:none;font-size:14px;font-weight:900;color:${brandColor};padding-top:10px}
+    .notes-block{border:1px solid #e5e7eb;border-radius:8px;padding:14px 18px;background:#f9fafb;margin-bottom:28px;white-space:pre-wrap;font-size:12px;color:#374151}
+    .sig-block{display:flex;justify-content:space-between;margin-top:40px;gap:20px}
+    .sig{flex:1;text-align:center}
+    .sig-line{border-top:1px solid #374151;padding-top:8px;font-size:10px;color:#6b7280;font-weight:600}
+    .footer{margin-top:36px;padding-top:14px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;font-size:9px;color:#9ca3af}
+    @media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}@page{margin:20mm}}
+  </style>
+</head>
+<body><div class="page">
+  <div class="header">
+    <div>${buildBrandedHeader(clinicName, branding)}</div>
+    <div class="meta">
+      <strong>PRESUPUESTO / PLAN DENTAL</strong><br>
+      Paciente: ${patient.nombres} ${patient.apellidos}<br>
+      Folio: ${patient.folio ?? patient.numeroPaciente}<br>
+      Generado: ${fmt(new Date())}
+    </div>
+  </div>
+
+  <div class="validity-block">
+    <div class="validity-card">
+      <span class="validity-label">Fecha de Emisión</span>
+      <div class="validity-value">${fmt(emisionDate)}</div>
+    </div>
+    <div class="validity-card valid-until">
+      <span class="validity-label">Válido hasta</span>
+      <div class="validity-value">${fmt(validDate)}</div>
+    </div>
+    <div class="validity-card">
+      <span class="validity-label">Vigencia</span>
+      <div class="validity-value">15 días naturales</div>
+    </div>
+  </div>
+
+  <div class="patient-block">
+    <div class="pfield"><label>Paciente</label><span>${patient.nombres} ${patient.apellidos}</span></div>
+    <div class="pfield"><label>Teléfono</label><span>${patient.telefono || '—'}</span></div>
+    <div class="pfield"><label>Correo</label><span>${patient.email || '—'}</span></div>
+  </div>
+
+  <div class="section-title">Detalle de Tratamientos</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Código</th><th>Tratamiento</th><th>Diente</th><th>Doctor</th>
+        <th style="text-align:right">Precio</th><th style="text-align:center">Desc.</th>
+        <th style="text-align:right">Neto</th><th style="text-align:center">Estado</th>
+      </tr>
+    </thead>
+    <tbody>${phaseRows}</tbody>
+  </table>
+
+  <div class="totals">
+    ${grandDiscount > 0 ? `<div class="totals-row"><span>Descuentos</span><span style="color:#ef4444">-${formatMXN(grandDiscount)}</span></div>` : ''}
+    <div class="totals-row"><span>Total del Presupuesto</span><span>${formatMXN(grandTotal)}</span></div>
+  </div>
+
+  ${plan.notes?.trim() ? `
+  <div class="section-title">Notas del Plan</div>
+  <div class="notes-block">${plan.notes}</div>` : ''}
+
+  <div class="sig-block">
+    <div class="sig"><div class="sig-line">Firma del Paciente o Tutor</div></div>
+    <div class="sig"><div class="sig-line">${doctorSig}</div></div>
+  </div>
+
+  <div class="footer">${buildBrandedFooter(clinicName, branding)}</div>
+</div></body></html>`;
+
+    const presupWin = window.open('', '_blank', 'width=960,height=780');
+    if (!presupWin) { alert('Permite ventanas emergentes para imprimir.'); return; }
+    presupWin.document.write(presupHtml);
+    presupWin.document.close();
+    presupWin.focus();
+    setTimeout(() => { presupWin.print(); }, 600);
 }
