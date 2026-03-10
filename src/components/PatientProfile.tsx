@@ -1,21 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-    User, Activity, FileText, BriefcaseMedical, Landmark, Camera,
+    User, Activity, FileText, BriefcaseMedical, Camera,
     Sparkles, Trash2, Loader2, CheckCircle2, Plus, Layers,
-    AlertTriangle, ShieldAlert, Printer, Link2,
+    AlertTriangle, ShieldAlert, Printer, Link2, Landmark,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { addTransaction, AccountType } from '../lib/financeApi';
 import { AIClinicalViewer } from './AIClinicalViewer';
 import { HybridChart } from './patient/HybridChart';
 import { VisitRecord } from './patient/VisitRecord';
 import { TreatmentPipeline } from './patient/TreatmentPipeline';
+import { PatientFinanzas } from './patient/PatientFinanzas';
 import { useMarket } from '../context/MarketContext';
 import { printPatientRecord, getOrCreateToken } from '../utils/patientPrint';
 import {
     loadPatientRecord, savePatientRecord, uploadPatientFile, deletePatientFile,
     PatientMedicalHistory, PatientFile,
-    PatientVisit, TreatmentPlan, VisitStatus,
+    PatientVisit, TreatmentPlan, VisitStatus, PatientPayment,
 } from '../lib/supabase';
 
 interface PatientProfileProps {
@@ -72,14 +72,8 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patie
         });
     };
 
-    // ── Finance state ────────────────────────────────────────────────────────
-    const [selectedTreatmentId, setSelectedTreatmentId] = useState<string>('__custom__');
-    const [conceptoCobro, setConceptoCobro] = useState(`Tratamiento: ${patientName}`);
-    const [cuentaCobro, setCuentaCobro] = useState<AccountType>('bbva');
-    const [montoCobro, setMontoCobro] = useState('');
-    const [cryptoType, setCryptoType] = useState('USDT');
-    const [isSavingPago, setIsSavingPago] = useState(false);
-    const [pagoAprobado, setPagoAprobado] = useState(false);
+    // ── Payments state ───────────────────────────────────────────────────────
+    const [payments, setPayments] = useState<PatientPayment[]>([]);
 
     // ── Clinical record state ────────────────────────────────────────────────
     const [isLoading, setIsLoading] = useState(true);
@@ -109,6 +103,7 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patie
             setFiles(record.files ?? []);
             setVisits(record.visits ?? []);
             setTreatmentPlan(record.treatmentPlan ?? { items: [], notes: '', updatedAt: '' });
+            setPayments(record.payments ?? []);
             // pre-select most recent visit
             if (record.visits?.length) {
                 const sorted = [...record.visits].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -206,16 +201,11 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patie
         setTreatmentPlan(plan);
     };
 
-    // ── Finance ──────────────────────────────────────────────────────────────
-    const handleCobroSubmit = async (e: React.SyntheticEvent) => {
-        e.preventDefault();
-        if (!montoCobro) return;
-        setIsSavingPago(true);
-        await addTransaction('ingreso', cuentaCobro, conceptoCobro, Number(montoCobro), cuentaCobro === 'cripto' ? cryptoType : undefined);
-        setIsSavingPago(false);
-        setPagoAprobado(true);
-        setTimeout(() => setPagoAprobado(false), 3000);
-        setMontoCobro('');
+    // ── Payments ──────────────────────────────────────────────────────────────
+    const handleSavePayment = async (payment: PatientPayment) => {
+        const updated = [payment, ...payments];
+        await savePatientRecord(patientId, { payments: updated });
+        setPayments(updated);
     };
 
     const formatVisitDate = (iso: string) => {
@@ -549,125 +539,15 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patie
                                 </div>
                             )}
 
-                            {/* ══ CAJA ══ */}
+                            {/* ══ COBROS / FINANZAS ══ */}
                             {activeTab === 'finanzas' && (
-                                <div className="p-6 overflow-y-auto h-full animate-in fade-in duration-300">
-                                    <div className="max-w-xl mx-auto">
-                                        <div className="bg-gradient-to-br from-white/10 to-white/5 border border-white/20 rounded-3xl p-8 shadow-2xl relative overflow-hidden">
-                                            <div className="absolute -top-20 -right-20 w-64 h-64 bg-premium/20 rounded-full blur-3xl"></div>
-                                            <h3 className="font-syne text-2xl text-white mb-6 flex items-center gap-3 relative z-10">
-                                                <Landmark className="text-premium" /> Caja Centralizada
-                                            </h3>
-                                            {pagoAprobado ? (
-                                                <div className="bg-emerald-500/20 border border-emerald-500/50 p-6 rounded-2xl text-center relative z-10">
-                                                    <div className="w-16 h-16 bg-emerald-500 text-white rounded-full flex items-center justify-center mx-auto mb-4 text-2xl font-black">✓</div>
-                                                    <h4 className="font-syne text-xl font-bold text-emerald-400">Pago Ingresado con Éxito</h4>
-                                                    <p className="text-sm text-clinical/70 mt-2">El saldo ha sido actualizado en los reportes financieros.</p>
-                                                </div>
-                                            ) : (
-                                                <form onSubmit={handleCobroSubmit} className="space-y-5 relative z-10">
-                                                    {/* Concepto — linked to treatment plan items */}
-                                                    {(() => {
-                                                        const activeItems = treatmentPlan.items.filter(i => i.status !== 'cancelled');
-                                                        const handleTxSelect = (txId: string) => {
-                                                            setSelectedTreatmentId(txId);
-                                                            if (txId === '__custom__') {
-                                                                setConceptoCobro(`Tratamiento: ${patientName}`);
-                                                                setMontoCobro('');
-                                                            } else {
-                                                                const tx = activeItems.find(i => i.id === txId);
-                                                                if (tx) {
-                                                                    const final = tx.price - tx.price * (tx.discount / 100);
-                                                                    setConceptoCobro(`${tx.name}${tx.toothNumber ? ` (D-${tx.toothNumber})` : ''} — ${patientName}`);
-                                                                    setMontoCobro(String(Math.round(final)));
-                                                                }
-                                                            }
-                                                        };
-                                                        return (
-                                                            <div className="space-y-2">
-                                                                <label className="text-xs text-clinical/60 mb-1 block">Concepto del Cobro</label>
-                                                                <select
-                                                                    title="Seleccionar tratamiento"
-                                                                    value={selectedTreatmentId}
-                                                                    onChange={e => handleTxSelect(e.target.value)}
-                                                                    className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white focus:border-premium transition-colors outline-none"
-                                                                >
-                                                                    {activeItems.length > 0 && (
-                                                                        <optgroup label="Tratamientos del plan">
-                                                                            {activeItems.map(tx => {
-                                                                                const final = tx.price - tx.price * (tx.discount / 100);
-                                                                                return (
-                                                                                    <option key={tx.id} value={tx.id}>
-                                                                                        {tx.name}{tx.toothNumber ? ` (D-${tx.toothNumber})` : ''} — ${final.toLocaleString('es-MX')}
-                                                                                        {tx.status === 'paid' ? ' ✓' : ''}
-                                                                                    </option>
-                                                                                );
-                                                                            })}
-                                                                        </optgroup>
-                                                                    )}
-                                                                    <option value="__custom__">— Otro concepto personalizado —</option>
-                                                                </select>
-                                                                {selectedTreatmentId === '__custom__' && (
-                                                                    <input
-                                                                        title="Concepto personalizado"
-                                                                        type="text" required
-                                                                        value={conceptoCobro}
-                                                                        onChange={e => setConceptoCobro(e.target.value)}
-                                                                        placeholder={`Tratamiento: ${patientName}`}
-                                                                        className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white focus:border-premium transition-colors outline-none"
-                                                                    />
-                                                                )}
-                                                            </div>
-                                                        );
-                                                    })()}
-
-                                                    <div className="grid grid-cols-2 gap-4">
-                                                        <div>
-                                                            <label className="text-xs text-clinical/60 mb-1 block">Cuenta</label>
-                                                            <select title="Cuenta" value={cuentaCobro} onChange={e => setCuentaCobro(e.target.value as AccountType)} className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white focus:border-premium transition-colors outline-none appearance-none">
-                                                                <option value="bbva">T. Crédito / BBVA</option>
-                                                                <option value="banorte">T. Débito / Banorte</option>
-                                                                <option value="revolut">Revolut Bank</option>
-                                                                <option value="cripto">Criptomonedas</option>
-                                                                <option value="efectivo">Efectivo</option>
-                                                            </select>
-                                                        </div>
-                                                        <div>
-                                                            <label className="text-xs text-clinical/60 mb-1 block">Monto (MXN)</label>
-                                                            <div className="relative">
-                                                                <span className="absolute left-4 top-4 text-clinical/50 font-bold">$</span>
-                                                                <input title="Monto" type="number" required min="1" value={montoCobro} onChange={e => setMontoCobro(e.target.value)} placeholder="0.00" className="w-full bg-black/40 border border-white/10 rounded-xl pl-8 pr-4 py-4 text-white font-bold focus:border-premium transition-colors outline-none" />
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                    {cuentaCobro === 'cripto' && (
-                                                        <div className="bg-japandi-wood/10 border border-japandi-wood/30 p-4 rounded-xl">
-                                                            <label className="text-xs text-japandi-wood mb-2 block">Red Crypto</label>
-                                                            <select title="Red" value={cryptoType} onChange={e => setCryptoType(e.target.value)} className="w-full bg-black/40 border border-japandi-wood/30 rounded-lg p-3 text-white focus:border-japandi-wood outline-none mb-3">
-                                                                <option value="MXN">Peso Mexicano Digital (Bitso - 0%)</option>
-                                                                <option value="USDT">USDT (TRC20)</option>
-                                                                <option value="BTC">Bitcoin</option>
-                                                                <option value="ETH">Ethereum (ERC20)</option>
-                                                            </select>
-                                                            {montoCobro && (
-                                                                <p className="text-[10px] text-japanese-sand italic">
-                                                                    {cryptoType === 'MXN'
-                                                                        ? `Sin comisiones (Bitso). Recibirá $${Number(montoCobro).toLocaleString()} MXN netos.`
-                                                                        : `Recibirá $${(Number(montoCobro) * 0.985).toLocaleString()} MXN netos (1.5% comisión).`
-                                                                    }
-                                                                </p>
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                    <button type="submit" disabled={isSavingPago} className="w-full py-4 rounded-xl bg-premium text-cobalt font-black text-lg hover:opacity-90 transition-opacity mt-4 flex justify-center items-center shadow-[0_0_20px_rgba(212,175,55,0.4)]">
-                                                        {isSavingPago ? <span className="w-6 h-6 border-2 border-cobalt/30 border-t-cobalt rounded-full animate-spin"></span> : 'Procesar Cobro'}
-                                                    </button>
-                                                    <p className="text-center text-[10px] text-clinical/40 mt-2">El cobro impacta inmediatamente los reportes financieros de la clínica.</p>
-                                                </form>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
+                                <PatientFinanzas
+                                    patientId={patientId}
+                                    patientName={patientName}
+                                    treatmentPlan={treatmentPlan}
+                                    payments={payments}
+                                    onSavePayment={handleSavePayment}
+                                />
                             )}
                         </>
                     )}

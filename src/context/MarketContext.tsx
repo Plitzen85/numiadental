@@ -87,6 +87,7 @@ export interface StaffMember {
     modulePermissions?: ModulePermissions;
     isMasterAdmin?: boolean; // Unique role with total access
     googleCalendarConnected?: boolean; // true once doctor has authorized Google Calendar
+    porcentajeComision?: number; // % del monto del tratamiento que corresponde al doctor (ej: 30)
 }
 
 /** True if staff member can be assigned as treating doctor */

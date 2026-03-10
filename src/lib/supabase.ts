@@ -128,6 +128,25 @@ export interface PatientVisit {
     };
 }
 
+// ─── Patient Payments / Cobros types ─────────────────────────────────────────
+
+export type MetodoPago = 'efectivo' | 'tarjeta_credito' | 'tarjeta_debito' | 'transferencia' | 'cripto';
+
+export interface PatientPayment {
+    id: string;
+    date: string;                   // ISO date string
+    monto: number;                  // Amount in MXN
+    metodoPago: MetodoPago;
+    cryptoType?: string;            // 'USDT' | 'BTC' | 'ETH' | 'MXN'
+    cuentaDestino: string;          // 'bbva' | 'banorte' | 'revolut' | 'cripto' | 'efectivo'
+    concepto: string;               // Free text description
+    treatmentItemIds: string[];     // TreatmentPlanItem IDs this covers
+    receivedById: string;           // Staff member ID who received payment
+    receivedByName: string;
+    notes?: string;
+    receiptNumber?: string;         // Auto-generated receipt number
+}
+
 // ─── Treatment Plan types ─────────────────────────────────────────────────────
 
 export type TreatmentStatus = 'pending' | 'in_progress' | 'completed' | 'paid' | 'cancelled';
@@ -167,6 +186,7 @@ export interface PatientRecordData {
     files: PatientFile[];
     visits: PatientVisit[];
     treatmentPlan: TreatmentPlan;
+    payments: PatientPayment[];     // All cobros registered for this patient
     clinicalFormState?: Record<string, string>; // Full clinical questionnaire from PatientProfileForm
 }
 
@@ -179,6 +199,7 @@ const DEFAULT_PATIENT_RECORD: PatientRecordData = {
     files: [],
     visits: [],
     treatmentPlan: { items: [], notes: '', updatedAt: '' },
+    payments: [],
 };
 
 // ─── Patient record helpers ───────────────────────────────────────────────────

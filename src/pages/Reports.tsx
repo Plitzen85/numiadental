@@ -1,179 +1,495 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { FileBarChart, Search, Filter, Download } from 'lucide-react';
+import {
+    FileBarChart, Search, Download, Loader2, RefreshCw,
+    TrendingUp, DollarSign, Clock, CheckCircle2, AlertCircle,
+    ChevronDown, ChevronUp, Users,
+} from 'lucide-react';
+import { useMarket } from '../context/MarketContext';
+import { loadPatientRecord, PatientRecordData } from '../lib/supabase';
+import {
+    calcularLiquidaciones, primerDiaMes, hoy,
+    LiquidacionDoctor, PatientSummaryForLiquidacion,
+} from '../lib/comisionesEngine';
 
-const mockReports = [
-    {
-        id: 1,
-        medico: 'Dr. Alejandro Rivas',
-        fechaPago: 'Mar. 01, 2026',
-        procedimiento: 'Implantes All-on-4',
-        precioBase: 120000,
-        pagado: 120000,
-        noPagado: 0,
-        costoMaterial: 45000,
-        ingresoTotal: 120000,
-        ingresoPeriodo: 36000,
-        salarioEspera: 0,
-        paciente: 'Arturo Mendoza'
-    },
-    {
-        id: 2,
-        medico: 'Dra. Sofía Mendoza',
-        fechaPago: 'Mar. 02, 2026',
-        procedimiento: 'Diseño de Sonrisa DSD',
-        precioBase: 85000,
-        pagado: 40000,
-        noPagado: 45000,
-        costoMaterial: 15000,
-        ingresoTotal: 85000,
-        ingresoPeriodo: 12000,
-        salarioEspera: 13500,
-        paciente: 'Carlos Valladares'
-    },
-    {
-        id: 3,
-        medico: 'Dr. Alejandro Rivas',
-        fechaPago: 'Mar. 04, 2026',
-        procedimiento: 'Elevación de Seno Maxilar',
-        precioBase: 35000,
-        pagado: 35000,
-        noPagado: 0,
-        costoMaterial: 5000,
-        ingresoTotal: 35000,
-        ingresoPeriodo: 10500,
-        salarioEspera: 0,
-        paciente: 'Marta Higareda'
-    }
-];
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const fmt = (n: number) =>
+    new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 0 }).format(n);
+
+const fmtDate = (iso: string) =>
+    new Date(iso + 'T00:00:00').toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 
 export const Reports: React.FC = () => {
+    const { clinicProfile, patients } = useMarket();
+    const staff = clinicProfile?.staff ?? [];
+
+    // ── Filters ──────────────────────────────────────────────────────────────
     const [activeTab, setActiveTab] = useState<'medicos' | 'pacientes' | 'servicios'>('medicos');
+    const [search, setSearch] = useState('');
+    const [filterDoctor, setFilterDoctor] = useState('');
+    const [desde, setDesde] = useState(primerDiaMes());
+    const [hasta, setHasta] = useState(hoy());
+
+    // ── Data loading ─────────────────────────────────────────────────────────
+    const [loading, setLoading] = useState(false);
+    const [patientData, setPatientData] = useState<PatientSummaryForLiquidacion[]>([]);
+    const [lastLoaded, setLastLoaded] = useState<string | null>(null);
+    const [expandedDoctor, setExpandedDoctor] = useState<string | null>(null);
+
+    const loadAllRecords = async () => {
+        if (patients.length === 0) return;
+        setLoading(true);
+        const results: PatientSummaryForLiquidacion[] = [];
+
+        await Promise.all(
+            patients.map(async (p) => {
+                const record: PatientRecordData = await loadPatientRecord(p.id);
+                results.push({
+                    patientId: p.id,
+                    patientName: p.nombres,
+                    payments: record.payments ?? [],
+                    treatmentItems: record.treatmentPlan?.items ?? [],
+                });
+            })
+        );
+
+        setPatientData(results);
+        setLastLoaded(new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }));
+        setLoading(false);
+    };
+
+    useEffect(() => {
+        loadAllRecords();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [patients.length]);
+
+    // ── Liquidaciones (real) ─────────────────────────────────────────────────
+    const liquidaciones: LiquidacionDoctor[] = useMemo(() => {
+        if (patientData.length === 0) return [];
+        return calcularLiquidaciones(
+            staff,
+            patientData,
+            desde,
+            hasta,
+            filterDoctor ? [filterDoctor] : undefined,
+        );
+    }, [staff, patientData, desde, hasta, filterDoctor]);
+
+    // Summary totals across all doctors
+    const grandTotal = useMemo(() => ({
+        generado:  liquidaciones.reduce((s, d) => s + d.totalGenerado, 0),
+        comision:  liquidaciones.reduce((s, d) => s + d.totalComision, 0),
+        pagado:    liquidaciones.reduce((s, d) => s + d.totalPagado, 0),
+        pendiente: liquidaciones.reduce((s, d) => s + d.totalPendiente, 0),
+    }), [liquidaciones]);
+
+    // ── Patient payments view ─────────────────────────────────────────────────
+    const allPayments = useMemo(() => {
+        return patientData
+            .flatMap(p => p.payments.map(pay => ({ ...pay, patientName: p.patientName })))
+            .filter(pay => pay.date >= desde && pay.date <= hasta)
+            .filter(pay => !search || pay.patientName.toLowerCase().includes(search.toLowerCase()) || pay.concepto.toLowerCase().includes(search.toLowerCase()))
+            .sort((a, b) => b.date.localeCompare(a.date));
+    }, [patientData, desde, hasta, search]);
+
+    // ── Services view ─────────────────────────────────────────────────────────
+    const serviceStats = useMemo(() => {
+        const map = new Map<string, { count: number; total: number }>();
+        for (const p of patientData) {
+            for (const item of p.treatmentItems) {
+                if (!item.completedDate || item.completedDate < desde || item.completedDate > hasta) continue;
+                if (item.status !== 'completed' && item.status !== 'paid') continue;
+                const entry = map.get(item.name) ?? { count: 0, total: 0 };
+                entry.count++;
+                entry.total += item.price - item.discount;
+                map.set(item.name, entry);
+            }
+        }
+        return [...map.entries()]
+            .map(([name, data]) => ({ name, ...data }))
+            .sort((a, b) => b.total - a.total);
+    }, [patientData, desde, hasta]);
+
+    // ── Export CSV ────────────────────────────────────────────────────────────
+    const exportCSV = () => {
+        if (activeTab === 'medicos') {
+            const rows = [
+                ['Médico', 'Paciente', 'Tratamiento', 'Diente', 'Fecha', 'Precio', '% Comisión', 'Comisión', 'Estado'],
+                ...liquidaciones.flatMap(d =>
+                    d.lineas.map(l => [
+                        d.doctorName, l.paciente, l.tratamiento,
+                        l.toothNumber ?? '', l.fecha,
+                        l.precio, l.porcentaje, l.comision, l.estatus,
+                    ])
+                ),
+            ];
+            downloadCSV(rows, `liquidacion-${desde}-${hasta}.csv`);
+        } else if (activeTab === 'pacientes') {
+            const rows = [
+                ['Paciente', 'Fecha', 'Concepto', 'Monto', 'Método'],
+                ...allPayments.map(p => [p.patientName, p.date, p.concepto, p.monto, p.metodoPago]),
+            ];
+            downloadCSV(rows, `cobros-${desde}-${hasta}.csv`);
+        } else {
+            const rows = [
+                ['Servicio', 'Cantidad', 'Total MXN'],
+                ...serviceStats.map(s => [s.name, s.count, s.total]),
+            ];
+            downloadCSV(rows, `servicios-${desde}-${hasta}.csv`);
+        }
+    };
+
+    const downloadCSV = (rows: (string | number)[][], filename: string) => {
+        const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────
+
+    const doctors = staff.filter(s => s.staffType === 'doctor' || s.staffType === 'external_doctor');
 
     return (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6 pb-12">
-            <div className="flex items-center gap-3">
-                <FileBarChart className="text-electric w-8 h-8" />
-                <h1 className="font-syne text-3xl font-bold bg-gradient-to-r from-electric to-white text-transparent bg-clip-text">
-                    Informes
-                </h1>
-            </div>
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6 pb-12 max-w-7xl mx-auto">
 
-            {/* Tabs */}
-            <div className="flex border-b border-white/10">
-                <button
-                    onClick={() => setActiveTab('medicos')}
-                    className={`px-6 py-3 font-bold text-sm transition-colors relative ${activeTab === 'medicos' ? 'bg-white/10 text-white' : 'text-clinical/60 hover:text-white bg-transparent'}`}
-                >
-                    Liquidación para médicos
-                    {activeTab === 'medicos' && <div className="absolute top-0 left-0 right-0 h-1 bg-electric"></div>}
-                </button>
-                <button
-                    onClick={() => setActiveTab('pacientes')}
-                    className={`px-6 py-3 font-bold text-sm transition-colors relative ${activeTab === 'pacientes' ? 'bg-white/10 text-white' : 'text-clinical/60 hover:text-white bg-white/5'}`}
-                >
-                    Reporte de pagos de pacientes
-                    {activeTab === 'pacientes' && <div className="absolute top-0 left-0 right-0 h-1 bg-electric"></div>}
-                </button>
-                <button
-                    onClick={() => setActiveTab('servicios')}
-                    className={`px-6 py-3 font-bold text-sm transition-colors relative ${activeTab === 'servicios' ? 'bg-white/10 text-white' : 'text-clinical/60 hover:text-white bg-white/5'}`}
-                >
-                    Informe de Servicios Prestados
-                    {activeTab === 'servicios' && <div className="absolute top-0 left-0 right-0 h-1 bg-electric"></div>}
-                </button>
-            </div>
-
-            <div className="glass-panel p-6 rounded-2xl border border-white/10">
-                <p className="text-sm font-bold text-clinical mb-4">Filtro</p>
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end mb-6">
-                    <div className="md:col-span-4 relative">
-                        <input title="Campo" type="text" placeholder="Nombre, DNI, ID, teléfono" className="w-full bg-cobalt border border-white/20 rounded-lg pl-4 pr-10 py-3 text-sm text-clinical focus:border-electric outline-none" />
-                        <Search className="w-4 h-4 text-clinical/50 absolute right-3 top-3.5" />
-                    </div>
-                    <div className="md:col-span-3">
-                        <select title="Opciones" className="w-full bg-cobalt border border-white/20 rounded-lg px-4 py-3 text-sm text-clinical focus:border-electric outline-none appearance-none">
-                            <option value="">Seleccionar un médico</option>
-                            <option value="1">Dr. Alejandro Rivas</option>
-                            <option value="2">Dra. Sofía Mendoza</option>
-                        </select>
-                    </div>
-                    <div className="md:col-span-5">
-                        <select title="Opciones" className="w-full bg-cobalt border border-white/20 rounded-lg px-4 py-3 text-sm text-clinical focus:border-electric outline-none appearance-none">
-                            <option value="">Servicios</option>
-                            <option value="imp">Implantes Dentales</option>
-                            <option value="ort">Ortodoncia Invisible</option>
-                        </select>
+            {/* ── Header ────────────────────────────────────────────────── */}
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                    <FileBarChart className="text-electric w-8 h-8" />
+                    <div>
+                        <h1 className="font-syne text-3xl font-bold bg-gradient-to-r from-electric to-white text-transparent bg-clip-text">
+                            Informes
+                        </h1>
+                        {lastLoaded && (
+                            <p className="text-[11px] text-clinical/30">Actualizado: {lastLoaded}</p>
+                        )}
                     </div>
                 </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
-                    <div className="md:col-span-4 relative">
-                        <label className="text-[10px] text-clinical/50 uppercase tracking-widest absolute top-1 left-3">Pagos, desde</label>
-                        <input title="Campo" type="date" className="w-full bg-cobalt border border-white/20 rounded-lg px-3 pt-5 pb-2 text-sm text-clinical focus:border-electric outline-none" defaultValue="2026-03-01" />
-                    </div>
-                    <div className="md:col-span-4 relative">
-                        <label className="text-[10px] text-clinical/50 uppercase tracking-widest absolute top-1 left-3">Pagos, hasta</label>
-                        <input title="Campo" type="date" className="w-full bg-cobalt border border-white/20 rounded-lg px-3 pt-5 pb-2 text-sm text-clinical focus:border-electric outline-none" defaultValue="2026-03-31" />
-                    </div>
-                    <div className="md:col-span-2 flex items-center gap-2">
-                        <input title="Campo" type="checkbox" id="detallada" className="w-4 h-4 bg-cobalt border-white/20 rounded text-electric focus:ring-electric" />
-                        <label htmlFor="detallada" className="text-sm text-clinical/70">Vista detallada</label>
-                    </div>
-                    <div className="md:col-span-2">
-                        <button className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2">
-                            <Filter className="w-4 h-4 text-white" /> Seleccionar
-                        </button>
-                    </div>
-                </div>
+                <button
+                    type="button"
+                    onClick={loadAllRecords}
+                    disabled={loading}
+                    className="flex items-center gap-2 px-3 py-2 rounded-xl border border-white/10 bg-white/5 text-clinical/50 hover:text-white hover:border-white/20 transition-colors text-sm"
+                >
+                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                    Recargar datos
+                </button>
             </div>
 
-            {/* Data Table */}
-            <div className="glass-panel rounded-2xl border border-white/10 overflow-x-auto">
-                <table className="w-full text-left border-collapse min-w-max">
-                    <thead>
-                        <tr className="bg-white/5 border-b border-white/10 text-[10px] uppercase tracking-widest text-clinical/60">
-                            <th className="p-4 font-bold">Médico</th>
-                            <th className="p-4 font-bold border-l border-white/5 flex items-center gap-1">Fecha de pago <span className="text-electric">↕</span></th>
-                            <th className="p-4 font-bold border-l border-white/5">Nombre del procedimiento</th>
-                            <th className="p-4 font-bold border-l border-white/5">Precio sin descuento<br />y sin IVA</th>
-                            <th className="p-4 font-bold border-l border-white/5">Pagado</th>
-                            <th className="p-4 font-bold border-l border-white/5">No pagado</th>
-                            <th className="p-4 font-bold border-l border-white/5">Costos de<br />material</th>
-                            <th className="p-4 font-bold border-l border-white/5">Ingresos<br />totales del Dr.</th>
-                            <th className="p-4 font-bold border-l border-white/5">Ingresos del Dr.<br />por período</th>
-                            <th className="p-4 font-bold border-l border-white/5">Salario<br />en espera</th>
-                            <th className="p-4 font-bold border-l border-white/5">Paciente</th>
-                        </tr>
-                    </thead>
-                    <tbody className="text-sm">
-                        {mockReports.map((row) => (
-                            <tr key={row.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
-                                <td className="p-4 text-white font-bold">{row.medico}</td>
-                                <td className="p-4 text-clinical/80">{row.fechaPago}</td>
-                                <td className="p-4 text-clinical">{row.procedimiento}</td>
-                                <td className="p-4 text-white">${row.precioBase.toLocaleString()}</td>
-                                <td className="p-4 text-emerald-400">${row.pagado.toLocaleString()}</td>
-                                <td className="p-4 text-red-400">${row.noPagado.toLocaleString()}</td>
-                                <td className="p-4 text-japandi-wood">${row.costoMaterial.toLocaleString()}</td>
-                                <td className="p-4 text-white">${row.ingresoTotal.toLocaleString()}</td>
-                                <td className="p-4 text-electric font-bold">${row.ingresoPeriodo.toLocaleString()}</td>
-                                <td className="p-4 text-yellow-400">${row.salarioEspera.toLocaleString()}</td>
-                                <td className="p-4 text-clinical/70">{row.paciente}</td>
-                            </tr>
+            {/* ── KPI Summary ───────────────────────────────────────────── */}
+            {activeTab === 'medicos' && !loading && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    {[
+                        { label: 'Producción', value: grandTotal.generado, icon: <TrendingUp className="w-4 h-4" />, color: 'text-electric border-electric/30 bg-electric/5' },
+                        { label: 'Comisiones', value: grandTotal.comision, icon: <DollarSign className="w-4 h-4" />, color: 'text-premium border-premium/30 bg-premium/5' },
+                        { label: 'Pagado', value: grandTotal.pagado, icon: <CheckCircle2 className="w-4 h-4" />, color: 'text-emerald-400 border-emerald-500/30 bg-emerald-500/5' },
+                        { label: 'Pendiente', value: grandTotal.pendiente, icon: <Clock className="w-4 h-4" />, color: grandTotal.pendiente > 0 ? 'text-amber-400 border-amber-500/30 bg-amber-500/5' : 'text-clinical/30 border-white/10 bg-white/3' },
+                    ].map(card => (
+                        <div key={card.label} className={`border rounded-2xl p-4 ${card.color}`}>
+                            <div className="flex items-center gap-2 mb-1 opacity-70 text-xs font-bold uppercase">
+                                {card.icon} {card.label}
+                            </div>
+                            <div className="font-syne text-xl font-bold">{fmt(card.value)}</div>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {/* ── Filters ───────────────────────────────────────────────── */}
+            <div className="bg-white/3 border border-white/10 p-5 rounded-2xl space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                    <div className="relative">
+                        <Search className="w-4 h-4 text-clinical/40 absolute left-3 top-3.5" />
+                        <input
+                            title="Buscar"
+                            type="text"
+                            placeholder="Buscar paciente, procedimiento…"
+                            value={search}
+                            onChange={e => setSearch(e.target.value)}
+                            className="w-full bg-black/30 border border-white/10 rounded-xl pl-9 pr-4 py-3 text-sm text-white focus:border-electric outline-none"
+                        />
+                    </div>
+                    <select
+                        title="Filtrar por médico"
+                        value={filterDoctor}
+                        onChange={e => setFilterDoctor(e.target.value)}
+                        className="bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-sm text-clinical focus:border-electric outline-none"
+                    >
+                        <option value="">Todos los médicos</option>
+                        {doctors.map(d => (
+                            <option key={d.id} value={d.id}>{d.nombres}</option>
                         ))}
-                    </tbody>
-                </table>
-                <div className="bg-white/5 p-3 flex justify-end gap-4 text-xs text-clinical/50 items-center">
-                    <span>Filas por página: 10</span>
-                    <span>1-3 de 3</span>
+                    </select>
+                    <div className="relative">
+                        <label className="text-[10px] text-clinical/40 uppercase absolute top-1 left-3">Desde</label>
+                        <input
+                            title="Desde"
+                            type="date"
+                            value={desde}
+                            onChange={e => setDesde(e.target.value)}
+                            className="w-full bg-black/30 border border-white/10 rounded-xl px-3 pt-5 pb-2 text-sm text-white focus:border-electric outline-none"
+                        />
+                    </div>
+                    <div className="relative">
+                        <label className="text-[10px] text-clinical/40 uppercase absolute top-1 left-3">Hasta</label>
+                        <input
+                            title="Hasta"
+                            type="date"
+                            value={hasta}
+                            onChange={e => setHasta(e.target.value)}
+                            className="w-full bg-black/30 border border-white/10 rounded-xl px-3 pt-5 pb-2 text-sm text-white focus:border-electric outline-none"
+                        />
+                    </div>
                 </div>
             </div>
 
-            {/* Totals & Export */}
-            <div className="flex justify-between items-center mt-6">
-                <button className="bg-[#900038] hover:bg-[#7a002e] text-white font-bold py-3 px-6 rounded-lg transition-colors flex items-center gap-2">
-                    <Download className="w-5 h-5" /> Descargar Excel
+            {/* ── Tabs ──────────────────────────────────────────────────── */}
+            <div className="flex border-b border-white/10">
+                {([
+                    { id: 'medicos',   label: 'Liquidación Médicos' },
+                    { id: 'pacientes', label: 'Cobros de Pacientes' },
+                    { id: 'servicios', label: 'Servicios Prestados' },
+                ] as const).map(tab => (
+                    <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setActiveTab(tab.id)}
+                        className={`px-5 py-3 font-bold text-sm transition-colors relative ${activeTab === tab.id ? 'text-white' : 'text-clinical/50 hover:text-white'}`}
+                    >
+                        {tab.label}
+                        {activeTab === tab.id && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-electric rounded-t" />}
+                    </button>
+                ))}
+            </div>
+
+            {/* ── Loading ────────────────────────────────────────────────── */}
+            {loading && (
+                <div className="flex items-center justify-center py-16 gap-3 text-clinical/40">
+                    <Loader2 className="w-6 h-6 animate-spin" />
+                    <span>Cargando expedientes de {patients.length} pacientes…</span>
+                </div>
+            )}
+
+            {/* ══════════════ TAB: MÉDICOS ══════════════ */}
+            {!loading && activeTab === 'medicos' && (
+                <div className="space-y-4">
+                    {liquidaciones.length === 0 ? (
+                        <div className="text-center py-16 text-clinical/25">
+                            <Users className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                            <p>No hay tratamientos completados en este período.</p>
+                        </div>
+                    ) : (
+                        liquidaciones
+                            .filter(d => !search || d.doctorName.toLowerCase().includes(search.toLowerCase()) || d.lineas.some(l => l.paciente.toLowerCase().includes(search.toLowerCase())))
+                            .map(doc => (
+                                <div key={doc.doctorId} className="bg-white/3 border border-white/10 rounded-2xl overflow-hidden">
+                                    {/* Doctor header */}
+                                    <button
+                                        type="button"
+                                        onClick={() => setExpandedDoctor(expandedDoctor === doc.doctorId ? null : doc.doctorId)}
+                                        className="w-full flex items-center justify-between p-5 hover:bg-white/3 transition-colors"
+                                    >
+                                        <div className="flex items-center gap-4">
+                                            <div className="w-10 h-10 rounded-full bg-electric/10 border border-electric/30 flex items-center justify-center text-electric font-bold text-sm">
+                                                {doc.doctorName.charAt(0)}
+                                            </div>
+                                            <div className="text-left">
+                                                <p className="font-bold text-white">{doc.doctorName}</p>
+                                                <p className="text-xs text-clinical/40">{doc.especialidad} · {doc.porcentajeComision}% comisión · {doc.lineas.length} tratamientos</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-6">
+                                            <div className="text-right hidden md:block">
+                                                <p className="text-xs text-clinical/40">Producción</p>
+                                                <p className="font-bold text-white">{fmt(doc.totalGenerado)}</p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-xs text-clinical/40">Comisión total</p>
+                                                <p className="font-bold text-premium">{fmt(doc.totalComision)}</p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-xs text-clinical/40">Pendiente</p>
+                                                <p className={`font-bold ${doc.totalPendiente > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                                                    {fmt(doc.totalPendiente)}
+                                                </p>
+                                            </div>
+                                            {expandedDoctor === doc.doctorId
+                                                ? <ChevronUp className="w-4 h-4 text-clinical/40" />
+                                                : <ChevronDown className="w-4 h-4 text-clinical/40" />
+                                            }
+                                        </div>
+                                    </button>
+
+                                    {/* Expanded lines */}
+                                    {expandedDoctor === doc.doctorId && (
+                                        <div className="border-t border-white/10">
+                                            {doc.lineas.length === 0 ? (
+                                                <p className="text-center py-6 text-clinical/30 text-sm">Sin tratamientos en este período.</p>
+                                            ) : (
+                                                <table className="w-full text-left text-sm">
+                                                    <thead>
+                                                        <tr className="bg-white/3 text-[10px] uppercase text-clinical/40 tracking-wide">
+                                                            <th className="px-5 py-3">Paciente</th>
+                                                            <th className="px-5 py-3">Tratamiento</th>
+                                                            <th className="px-5 py-3">Fecha</th>
+                                                            <th className="px-5 py-3 text-right">Precio</th>
+                                                            <th className="px-5 py-3 text-right">Comisión</th>
+                                                            <th className="px-5 py-3 text-center">Estado</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {doc.lineas.map((linea, i) => (
+                                                            <tr key={i} className="border-t border-white/5 hover:bg-white/3 transition-colors">
+                                                                <td className="px-5 py-3 text-white font-bold">{linea.paciente}</td>
+                                                                <td className="px-5 py-3 text-clinical/70">
+                                                                    {linea.toothNumber ? `D${linea.toothNumber} · ` : ''}{linea.tratamiento}
+                                                                </td>
+                                                                <td className="px-5 py-3 text-clinical/50">{fmtDate(linea.fecha)}</td>
+                                                                <td className="px-5 py-3 text-right text-white">{fmt(linea.precio)}</td>
+                                                                <td className="px-5 py-3 text-right text-premium font-bold">{fmt(linea.comision)}</td>
+                                                                <td className="px-5 py-3 text-center">
+                                                                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${
+                                                                        linea.estatus === 'pagado'
+                                                                            ? 'text-emerald-400 border-emerald-500/30 bg-emerald-500/5'
+                                                                            : 'text-amber-400 border-amber-500/30 bg-amber-500/5'
+                                                                    }`}>
+                                                                        {linea.estatus}
+                                                                    </span>
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                    <tfoot>
+                                                        <tr className="bg-white/5 border-t border-white/10 font-bold text-sm">
+                                                            <td colSpan={3} className="px-5 py-3 text-clinical/50">Total del período</td>
+                                                            <td className="px-5 py-3 text-right text-white">{fmt(doc.totalGenerado)}</td>
+                                                            <td className="px-5 py-3 text-right text-premium">{fmt(doc.totalComision)}</td>
+                                                            <td className="px-5 py-3 text-center text-amber-400">{fmt(doc.totalPendiente)} pdte.</td>
+                                                        </tr>
+                                                    </tfoot>
+                                                </table>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            ))
+                    )}
+                </div>
+            )}
+
+            {/* ══════════════ TAB: PACIENTES ══════════════ */}
+            {!loading && activeTab === 'pacientes' && (
+                <div>
+                    {allPayments.length === 0 ? (
+                        <div className="text-center py-16 text-clinical/25">
+                            <AlertCircle className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                            <p>Sin cobros registrados en este período.</p>
+                        </div>
+                    ) : (
+                        <div className="bg-white/3 border border-white/10 rounded-2xl overflow-hidden">
+                            <table className="w-full text-left text-sm">
+                                <thead>
+                                    <tr className="bg-white/5 text-[10px] uppercase text-clinical/40 tracking-wide">
+                                        <th className="px-5 py-3">Paciente</th>
+                                        <th className="px-5 py-3">Fecha</th>
+                                        <th className="px-5 py-3">Concepto</th>
+                                        <th className="px-5 py-3">Método</th>
+                                        <th className="px-5 py-3 text-right">Monto</th>
+                                        <th className="px-5 py-3">Recibo</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {allPayments.map(pay => (
+                                        <tr key={pay.id} className="border-t border-white/5 hover:bg-white/3 transition-colors">
+                                            <td className="px-5 py-3 text-white font-bold">{pay.patientName}</td>
+                                            <td className="px-5 py-3 text-clinical/50">{fmtDate(pay.date)}</td>
+                                            <td className="px-5 py-3 text-clinical/70">{pay.concepto}</td>
+                                            <td className="px-5 py-3 text-clinical/50 capitalize">{pay.metodoPago.replace('_', ' ')}</td>
+                                            <td className="px-5 py-3 text-right text-emerald-400 font-bold">{fmt(pay.monto)}</td>
+                                            <td className="px-5 py-3 text-clinical/30 text-xs">{pay.receiptNumber ?? '—'}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                                <tfoot>
+                                    <tr className="bg-white/5 border-t border-white/10 font-bold">
+                                        <td colSpan={4} className="px-5 py-3 text-clinical/50">Total cobrado en período</td>
+                                        <td className="px-5 py-3 text-right text-emerald-400">
+                                            {fmt(allPayments.reduce((s, p) => s + p.monto, 0))}
+                                        </td>
+                                        <td />
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* ══════════════ TAB: SERVICIOS ══════════════ */}
+            {!loading && activeTab === 'servicios' && (
+                <div>
+                    {serviceStats.length === 0 ? (
+                        <div className="text-center py-16 text-clinical/25">
+                            <AlertCircle className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                            <p>Sin servicios completados en este período.</p>
+                        </div>
+                    ) : (
+                        <div className="bg-white/3 border border-white/10 rounded-2xl overflow-hidden">
+                            <table className="w-full text-left text-sm">
+                                <thead>
+                                    <tr className="bg-white/5 text-[10px] uppercase text-clinical/40 tracking-wide">
+                                        <th className="px-5 py-3">Servicio</th>
+                                        <th className="px-5 py-3 text-center">Cantidad</th>
+                                        <th className="px-5 py-3 text-right">Ingresos</th>
+                                        <th className="px-5 py-3">% del total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {serviceStats.map(s => {
+                                        const totalAll = serviceStats.reduce((sum, x) => sum + x.total, 0);
+                                        const pct = totalAll > 0 ? (s.total / totalAll * 100) : 0;
+                                        return (
+                                            <tr key={s.name} className="border-t border-white/5 hover:bg-white/3 transition-colors">
+                                                <td className="px-5 py-3 text-white font-bold">{s.name}</td>
+                                                <td className="px-5 py-3 text-center text-clinical/70">{s.count}</td>
+                                                <td className="px-5 py-3 text-right text-electric font-bold">{fmt(s.total)}</td>
+                                                <td className="px-5 py-3">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                                                            <div
+                                                                className="h-full bg-electric rounded-full transition-all"
+                                                                ref={el => { if (el) el.style.width = `${pct}%`; }}
+                                                            />
+                                                        </div>
+                                                        <span className="text-xs text-clinical/40 w-8 text-right">{pct.toFixed(0)}%</span>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* ── Export ────────────────────────────────────────────────── */}
+            <div className="flex justify-end">
+                <button
+                    type="button"
+                    onClick={exportCSV}
+                    className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 px-6 rounded-xl transition-colors"
+                >
+                    <Download className="w-4 h-4" /> Exportar CSV
                 </button>
             </div>
         </motion.div>

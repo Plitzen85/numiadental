@@ -516,6 +516,24 @@ export const Settings: React.FC = () => {
                                             </select>
                                             <span className="text-clinical/40 text-[10px]">•</span>
                                             <p className="text-[10px] font-medium text-clinical/60">{member.especialidad}</p>
+                                            {(member.staffType === 'doctor' || member.staffType === 'external_doctor') && (
+                                                <>
+                                                    <span className="text-clinical/40 text-[10px]">•</span>
+                                                    <div className="flex items-center gap-1">
+                                                        <span className="text-[10px] text-clinical/40">Comisión</span>
+                                                        <input
+                                                            title="Porcentaje de comisión"
+                                                            type="number"
+                                                            min="0"
+                                                            max="100"
+                                                            value={member.porcentajeComision ?? 30}
+                                                            onChange={e => updateStaffMember(member.id, { porcentajeComision: Number(e.target.value) })}
+                                                            className="w-12 bg-white/5 border border-white/10 rounded px-1.5 py-0.5 text-[10px] font-bold text-electric focus:outline-none focus:border-electric/40 text-center"
+                                                        />
+                                                        <span className="text-[10px] text-clinical/40">%</span>
+                                                    </div>
+                                                </>
+                                            )}
                                             <span className="text-clinical/40 text-[10px]">•</span>
                                             <p className="text-[10px] font-medium text-clinical/60">{member.email}</p>
                                         </div>
