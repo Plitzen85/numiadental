@@ -114,12 +114,11 @@ export const Caja: React.FC = () => {
     useEffect(() => {
         const todaysCaja = getTodayCaja();
         const todayId = `caja-${new Date().toISOString().split('T')[0]}`;
-        if (todaysCaja) {
-            // Show today's caja (open OR closed) — closed shows a "Reabrir" option
+        if (todaysCaja?.status === 'open') {
             setCaja(todaysCaja);
             setHistorial(getAllCajas().filter(d => d.id !== todayId));
         } else {
-            // No caja at all today
+            // No caja or closed today → show opening screen; today goes to historial
             setCaja(null);
             setHistorial(getAllCajas());
         }
@@ -171,24 +170,16 @@ export const Caja: React.FC = () => {
         setSavingCierre(true);
         const updated = cerrarCaja(Number(cierreEfectivo) || 0, cierreNotas, currentUserId);
         if (updated) {
-            // Keep closed caja visible so user can see summary + Reabrir button
-            setCaja(updated);
-            setHistorial(prev => prev.filter(d => d.id !== updated.id));
+            // Go back to opening screen; move closed caja to historial
+            setCaja(null);
+            setHistorial(prev => [updated, ...prev.filter(d => d.id !== updated.id)]);
         }
         setSavingCierre(false);
         setShowCierre(false);
         setCierreEfectivo('');
         setCierreNotas('');
+        setShowHistorial(true); // auto-expand historial to show today's closed caja
         showToast('Caja cerrada correctamente');
-    };
-
-    const handleReabrirCaja = () => {
-        if (!caja) return;
-        const reopened = reabrirCaja(caja.id);
-        if (reopened) {
-            setCaja(reopened);
-            showToast('Caja reabierta correctamente');
-        }
     };
 
     const handleEditCierre = (e: React.FormEvent) => {
@@ -249,15 +240,6 @@ export const Caja: React.FC = () => {
                         className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-red-500/15 border border-red-500/40 text-red-400 hover:bg-red-500/25 transition-colors font-bold text-sm"
                     >
                         <Lock className="w-4 h-4" /> Cerrar Caja
-                    </button>
-                )}
-                {caja?.status === 'closed' && (
-                    <button
-                        type="button"
-                        onClick={handleReabrirCaja}
-                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-amber-500/30 bg-amber-500/5 text-amber-400 hover:bg-amber-500/10 transition-colors font-bold text-sm"
-                    >
-                        <Unlock className="w-4 h-4" /> Reabrir Caja
                     </button>
                 )}
             </div>
@@ -515,6 +497,24 @@ export const Caja: React.FC = () => {
                                                         <p className="text-sm font-bold text-electric">{fmt(t.ingresos)}</p>
                                                         <p className="text-[11px] text-clinical/35">ingresos</p>
                                                     </div>
+                                                    {/* Reabrir button — only for today's closed caja */}
+                                                    {h.date === new Date().toISOString().split('T')[0] && h.status === 'closed' && (
+                                                        <button
+                                                            type="button"
+                                                            title="Reabrir caja del día"
+                                                            onClick={() => {
+                                                                const reopened = reabrirCaja(h.id);
+                                                                if (reopened) {
+                                                                    setCaja(reopened);
+                                                                    setHistorial(prev => prev.filter(d => d.id !== h.id));
+                                                                    showToast('Caja reabierta correctamente');
+                                                                }
+                                                            }}
+                                                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-bold text-amber-400 border border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/10 transition-colors"
+                                                        >
+                                                            <Unlock className="w-3 h-3" /> Reabrir
+                                                        </button>
+                                                    )}
                                                     <button
                                                         type="button"
                                                         title="Editar cierre"
@@ -748,6 +748,8 @@ export const Caja: React.FC = () => {
                                         <span className="absolute left-4 top-1/2 -translate-y-1/2 text-clinical/40 font-bold">$</span>
                                         <input
                                             type="number" min="0" step="1"
+                                            title="Efectivo contado al cierre"
+                                            placeholder="0"
                                             value={editEfectivo}
                                             onChange={e => setEditEfectivo(e.target.value)}
                                             className="w-full bg-black/40 border border-white/10 rounded-xl pl-8 pr-4 py-3 text-white font-bold text-lg focus:border-electric outline-none transition-colors"
