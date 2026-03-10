@@ -50,20 +50,22 @@ function buildSystemPrompt(
 
     if (record?.treatmentPlan?.items?.length) {
         const active = record.treatmentPlan.items.filter(i => i.status !== 'cancelled');
-        lines.push('', `## Plan de tratamiento (${active.length} procedimientos)`);
-        active.slice(0, 10).forEach(item => {
-            lines.push(`- ${item.status.toUpperCase()} | ${item.name}${item.toothNumber ? ` (D${item.toothNumber})` : ''}`);
+        lines.push(`## Plan (${active.length} proc.)`);
+        // Limit to 5 items to save tokens
+        active.slice(0, 5).forEach(item => {
+            lines.push(`- ${item.status} | ${item.name}${item.toothNumber ? ` D${item.toothNumber}` : ''}`);
         });
     }
 
     if (record?.visits?.length) {
-        lines.push('', `## Últimas ${Math.min(3, record.visits.length)} consultas`);
-        record.visits.slice(-3).reverse().forEach(v => {
-            lines.push(`- ${v.date}: ${v.chiefComplaint || 'Consulta'} — ${v.diagnosis || 'Sin diagnóstico'}`);
+        // Limit to last 2 visits to save tokens
+        lines.push(`## Últimas consultas`);
+        record.visits.slice(-2).reverse().forEach(v => {
+            lines.push(`- ${v.date}: ${v.chiefComplaint || 'Consulta'} — ${v.diagnosis || ''}`);
         });
     }
 
-    lines.push('', 'Responde concisamente. Usa bullets cuando sea apropiado. Si detectas contraindicaciones, menciónalas primero.');
+    lines.push('Responde conciso, en español. Bullets si aplica. Contraindicaciones primero.');
     return lines.join('\n');
 }
 
@@ -97,8 +99,16 @@ async function callGemini(
     );
 
     if (!response.ok) {
+        if (response.status === 429) {
+            throw new Error('Límite de uso alcanzado (cuota gratuita de Gemini). Espera 1 minuto e intenta de nuevo, o activa facturación en Google AI Studio.');
+        }
         const err = await response.text();
-        throw new Error(`Gemini API error ${response.status}: ${err}`);
+        let msg = `Gemini API error ${response.status}`;
+        try {
+            const parsed = JSON.parse(err);
+            msg = parsed?.error?.message ?? msg;
+        } catch { /* keep default */ }
+        throw new Error(msg);
     }
 
     const reader = response.body?.getReader();
