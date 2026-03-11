@@ -662,7 +662,8 @@ export const Settings: React.FC = () => {
                                     .delete()
                                     .eq('clinic_id', CLINIC_ID);
                                 if (error) { alert(`Error: ${error.message}`); return; }
-                                alert('Expedientes clínicos eliminados de Supabase.');
+                                alert('Expedientes clínicos eliminados. La página se recargará.');
+                                window.location.reload();
                             }}
                             className="px-4 py-2.5 rounded-xl bg-red-500/15 border border-red-500/40 text-red-400 hover:bg-red-500/25 transition-colors font-bold text-sm"
                         >
@@ -673,7 +674,8 @@ export const Settings: React.FC = () => {
                             onClick={() => {
                                 if (!confirm('¿Seguro? Esto borrará toda la información de Caja del localStorage de este navegador.')) return;
                                 localStorage.removeItem('numia_caja_data');
-                                alert('Datos de Caja eliminados del localStorage.');
+                                alert('Datos de Caja eliminados. La página se recargará.');
+                                window.location.reload();
                             }}
                             className="px-4 py-2.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-400 hover:bg-amber-500/25 transition-colors font-bold text-sm"
                         >
@@ -689,7 +691,8 @@ export const Settings: React.FC = () => {
                                     patients: (clinicProfile.patients ?? []).map(p => ({ ...p, saldo: 0 })),
                                 };
                                 setClinicProfile(updated);
-                                alert('Saldo de todos los pacientes reseteado a $0.');
+                                alert('Saldo reseteado a $0. La página se recargará.');
+                                window.location.reload();
                             }}
                             className="px-4 py-2.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-400 hover:bg-amber-500/25 transition-colors font-bold text-sm"
                         >

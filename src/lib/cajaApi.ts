@@ -13,6 +13,7 @@ export interface CajaMovimiento {
     patientName?: string;
     paymentId?: string;         // Links to PatientPayment.id
     categoria?: string;         // Expense category (for egresos)
+    fechaFactura?: string;      // YYYY-MM-DD invoice date (egresos: may differ from payment date)
     operadorId: string;
     operadorName: string;
 }

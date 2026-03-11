@@ -48,9 +48,11 @@ interface ToothSVGProps {
     surfaces: ToothSurfaceMap;
     onSurfaceClick: (surface: ToothSurface) => void;
     isSelected?: boolean;
+    onSelect?: () => void;
+    hasNote?: boolean;
 }
 
-export const ToothSVG: React.FC<ToothSVGProps> = ({ number, surfaces, onSurfaceClick, isSelected }) => {
+export const ToothSVG: React.FC<ToothSVGProps> = ({ number, surfaces, onSurfaceClick, isSelected, onSelect, hasNote }) => {
 
     const isExtracted = Object.values(surfaces).every(s => s === 'extracted');
     const isCrown = Object.values(surfaces).every(s => s === 'crown');
@@ -66,9 +68,17 @@ export const ToothSVG: React.FC<ToothSVGProps> = ({ number, surfaces, onSurfaceC
 
     return (
         <div className="flex flex-col items-center gap-0.5 group">
-            <span className={`text-[9px] font-bold tabular-nums ${isSelected ? 'text-electric' : 'text-clinical/50'}`}>
+            <button
+                type="button"
+                title={`Seleccionar diente ${number}`}
+                onClick={e => { e.stopPropagation(); onSelect?.(); }}
+                className={`text-[9px] font-bold tabular-nums relative ${isSelected ? 'text-electric' : 'text-clinical/50 hover:text-clinical/80'}`}
+            >
                 {number}
-            </span>
+                {hasNote && (
+                    <span className="absolute -top-0.5 -right-1.5 w-1.5 h-1.5 rounded-full bg-amber-400" />
+                )}
+            </button>
             <div
                 className={`relative w-9 h-9 cursor-pointer transition-transform duration-150 group-hover:scale-110 ${isSelected ? 'scale-110' : ''}`}
                 title={`Diente ${number}`}

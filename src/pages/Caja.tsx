@@ -89,6 +89,7 @@ export const Caja: React.FC = () => {
     const [movConcepto, setMovConcepto] = useState('');
     const [movCategoria, setMovCategoria] = useState('');
     const [movMetodo, setMovMetodo] = useState<MetodoPago>('efectivo');
+    const [movFechaFactura, setMovFechaFactura] = useState('');
     const [savingMov, setSavingMov] = useState(false);
 
     // ── Cierre modal ─────────────────────────────────────────────────────────
@@ -156,6 +157,7 @@ export const Caja: React.FC = () => {
             concepto: movConcepto || (movTipo === 'ingreso' ? 'Cobro de servicio' : movTipo === 'egreso' ? 'Gasto operativo' : 'Retiro de efectivo'),
             metodoPago: movMetodo,
             categoria: movCategoria || undefined,
+            fechaFactura: movTipo === 'egreso' && movFechaFactura ? movFechaFactura : undefined,
             operadorId: currentUserId,
             operadorName,
         });
@@ -165,6 +167,7 @@ export const Caja: React.FC = () => {
         setMovMonto('');
         setMovConcepto('');
         setMovCategoria('');
+        setMovFechaFactura('');
         setMovTipo('ingreso');
         setMovMetodo('efectivo');
         showToast('Movimiento registrado');
@@ -450,6 +453,11 @@ export const Caja: React.FC = () => {
                                                 {mov.categoria && (
                                                     <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-500/10 text-red-400/70 border border-red-500/15">{mov.categoria}</span>
                                                 )}
+                                                {mov.fechaFactura && mov.fechaFactura !== caja?.date && (
+                                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400/70 border border-amber-500/15">
+                                                        Factura {mov.fechaFactura}
+                                                    </span>
+                                                )}
                                             </div>
                                         </div>
                                         <div className={`text-sm font-bold flex-shrink-0 ${
@@ -695,23 +703,38 @@ export const Caja: React.FC = () => {
                                         className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:border-electric outline-none transition-colors"
                                     />
                                 </div>
-                                {/* Categoría de gasto (solo egresos) */}
+                                {/* Categoría y fechas de gasto (solo egresos) */}
                                 {movTipo === 'egreso' && (
-                                    <div>
-                                        <label className="text-xs text-clinical/50 font-bold uppercase mb-2 block">Categoría</label>
-                                        <div className="flex flex-wrap gap-1.5">
-                                            {['Material dental','Renta','Servicios','Sueldos','Equipo','Limpieza','Marketing','Otros'].map(cat => (
-                                                <button key={cat} type="button" onClick={() => setMovCategoria(cat === movCategoria ? '' : cat)}
-                                                    className={`text-xs font-bold px-3 py-1.5 rounded-xl border transition-all ${
-                                                        movCategoria === cat
-                                                            ? 'border-red-500/60 bg-red-500/10 text-red-400'
-                                                            : 'border-white/10 text-clinical/40 hover:border-white/20 hover:text-clinical/60'
-                                                    }`}>
-                                                    {cat}
-                                                </button>
-                                            ))}
+                                    <>
+                                        <div>
+                                            <label className="text-xs text-clinical/50 font-bold uppercase mb-2 block">Categoría</label>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {['Material dental','Renta','Servicios','Sueldos','Equipo','Limpieza','Marketing','Otros'].map(cat => (
+                                                    <button key={cat} type="button" onClick={() => setMovCategoria(cat === movCategoria ? '' : cat)}
+                                                        className={`text-xs font-bold px-3 py-1.5 rounded-xl border transition-all ${
+                                                            movCategoria === cat
+                                                                ? 'border-red-500/60 bg-red-500/10 text-red-400'
+                                                                : 'border-white/10 text-clinical/40 hover:border-white/20 hover:text-clinical/60'
+                                                        }`}>
+                                                        {cat}
+                                                    </button>
+                                                ))}
+                                            </div>
                                         </div>
-                                    </div>
+                                        <div>
+                                            <label className="text-xs text-clinical/50 font-bold uppercase mb-1 block">
+                                                Fecha Factura <span className="text-clinical/30 normal-case font-normal">(si difiere de hoy)</span>
+                                            </label>
+                                            <input
+                                                type="date"
+                                                title="Fecha Factura"
+                                                value={movFechaFactura}
+                                                onChange={e => setMovFechaFactura(e.target.value)}
+                                                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm focus:border-red-400 outline-none transition-colors"
+                                            />
+                                            <p className="text-[10px] text-clinical/30 mt-1">Fecha en que se emitió la factura (fecha de pago = hoy)</p>
+                                        </div>
+                                    </>
                                 )}
                                 {/* Método */}
                                 <div>

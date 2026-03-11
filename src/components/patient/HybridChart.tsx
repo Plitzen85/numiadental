@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RefreshCcw, FileText, CheckCircle2, Activity, Stethoscope, Save } from 'lucide-react';
+import { RefreshCcw, FileText, CheckCircle2, Activity, Stethoscope, Save, MessageSquare, X } from 'lucide-react';
 import { useMarket } from '../../context/MarketContext';
 import { ToothSVG, ToothSurface, ToothCondition, ToothSurfaceMap, CONDITION_LABELS, defaultSurfaces } from './ToothSVG';
 import { PeriodoGrid, PeriodoData, defaultPeriodoData } from './PeriodoGrid';
@@ -91,6 +91,10 @@ export const HybridChart: React.FC<{ patientId?: string }> = ({ patientId }) => 
         Object.fromEntries(allTeeth.map(n => [n, defaultPeriodoData()]))
     );
 
+    // Per-tooth clinical notes
+    const [toothNotes, setToothNotes] = useState<Record<number, string>>({});
+    const [selectedTooth, setSelectedTooth] = useState<number | null>(null);
+
     // ── Persist state ────────────────────────────────────────────────────────
     const [isSaving, setIsSaving] = useState(false);
     const [savedOk, setSavedOk] = useState(false);
@@ -104,6 +108,8 @@ export const HybridChart: React.FC<{ patientId?: string }> = ({ patientId }) => 
                 setSurfaces(record.chartData.surfaces as unknown as Record<number, ToothSurfaceMap>);
                 setTreatments(record.chartData.treatments as unknown as AppliedTreatment[]);
                 setPeriodoData(record.chartData.periodoData as unknown as Record<number, PeriodoData>);
+                const cd = record.chartData as unknown as { toothNotes?: Record<number, string> };
+                if (cd.toothNotes) setToothNotes(cd.toothNotes);
             }
         });
     }, [patientId]);
@@ -115,14 +121,14 @@ export const HybridChart: React.FC<{ patientId?: string }> = ({ patientId }) => 
         saveTimer.current = setTimeout(async () => {
             setIsSaving(true);
             await savePatientRecord(patientId, {
-                chartData: { surfaces, treatments, periodoData },
+                chartData: { surfaces, treatments, periodoData, toothNotes } as unknown as { surfaces: Record<number, unknown>; treatments: { id: string; toothNumber: number; surface: string; condition: string; price: number; name: string }[]; periodoData: Record<number, unknown> },
             });
             setIsSaving(false);
             setSavedOk(true);
             setTimeout(() => setSavedOk(false), 2000);
         }, 1500);
         return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
-    }, [patientId, surfaces, treatments, periodoData]);
+    }, [patientId, surfaces, treatments, periodoData, toothNotes]);
 
     // ── Handlers ────────────────────────────────────────────────────────────
     const handleSurfaceClick = (toothNum: number, surface: ToothSurface) => {
@@ -152,6 +158,8 @@ export const HybridChart: React.FC<{ patientId?: string }> = ({ patientId }) => 
         setSurfaces(Object.fromEntries(allTeeth.map(n => [n, defaultSurfaces()])));
         setTreatments([]);
         setPeriodoData(Object.fromEntries(allTeeth.map(n => [n, defaultPeriodoData()])));
+        setToothNotes({});
+        setSelectedTooth(null);
     };
 
     // ── Approve: push treatments to TreatmentPlan ────────────────────────────
@@ -307,6 +315,9 @@ export const HybridChart: React.FC<{ patientId?: string }> = ({ patientId }) => 
                         number={n}
                         surfaces={surfaces[n]}
                         onSurfaceClick={s => handleSurfaceClick(n, s)}
+                        isSelected={selectedTooth === n}
+                        onSelect={() => setSelectedTooth(prev => prev === n ? null : n)}
+                        hasNote={!!toothNotes[n]}
                     />
                 ))}
             </div>
@@ -318,6 +329,9 @@ export const HybridChart: React.FC<{ patientId?: string }> = ({ patientId }) => 
                         number={n}
                         surfaces={surfaces[n]}
                         onSurfaceClick={s => handleSurfaceClick(n, s)}
+                        isSelected={selectedTooth === n}
+                        onSelect={() => setSelectedTooth(prev => prev === n ? null : n)}
+                        hasNote={!!toothNotes[n]}
                     />
                 ))}
             </div>
@@ -337,7 +351,7 @@ export const HybridChart: React.FC<{ patientId?: string }> = ({ patientId }) => 
                     {/* Discount toggle */}
                     <div className="flex justify-between items-center mb-3 pb-3 border-b border-gray-100">
                         <span className="text-xs font-bold text-gray-400">Descuento Comercial</span>
-                        <button onClick={() => setDiscountActive(d => !d)}
+                        <button type="button" onClick={() => setDiscountActive(d => !d)}
                             className={`px-3 py-1 text-[10px] font-bold rounded-full transition-colors ${discountActive ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}>
                             {discountActive ? '10% Activo' : 'Aplicar 10%'}
                         </button>
@@ -424,11 +438,11 @@ export const HybridChart: React.FC<{ patientId?: string }> = ({ patientId }) => 
                 {/* Mode switcher */}
                 <div className="flex items-center justify-between mb-4">
                     <div className="flex gap-1 bg-white/5 p-1 rounded-xl border border-white/10 w-fit">
-                        <button onClick={() => setChartMode('odontogram')}
+                        <button type="button" onClick={() => setChartMode('odontogram')}
                             className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${chartMode === 'odontogram' ? 'bg-electric text-cobalt' : 'text-clinical/60 hover:text-clinical'}`}>
                             <Stethoscope className="w-3.5 h-3.5" /> Odontograma
                         </button>
-                        <button onClick={() => setChartMode('periodonto')}
+                        <button type="button" onClick={() => setChartMode('periodonto')}
                             className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${chartMode === 'periodonto' ? 'bg-electric text-cobalt' : 'text-clinical/60 hover:text-clinical'}`}>
                             <Activity className="w-3.5 h-3.5" /> Periodontograma
                         </button>
@@ -453,7 +467,7 @@ export const HybridChart: React.FC<{ patientId?: string }> = ({ patientId }) => 
                             {/* Toolbar */}
                             <div className="flex flex-wrap items-center gap-1.5 bg-black/20 p-2 rounded-xl border border-white/5 self-center">
                                 {TOOLBAR.map(({ condition, dotClass, activeClass }) => (
-                                    <button key={condition}
+                                    <button type="button" key={condition}
                                         onClick={() => setActiveTool(condition)}
                                         title={CONDITION_LABELS[condition]}
                                         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all ${activeTool === condition ? activeClass : 'text-white/50 hover:bg-white/10'}`}>
@@ -482,6 +496,45 @@ export const HybridChart: React.FC<{ patientId?: string }> = ({ patientId }) => 
                             <div className="overflow-x-auto pb-2">
                                 <Arc teeth={LOWER_ADULT} />
                             </div>
+
+                            {/* Per-tooth note panel */}
+                            <AnimatePresence>
+                                {selectedTooth !== null && (
+                                    <motion.div
+                                        key="tooth-note"
+                                        initial={{ opacity: 0, y: 8 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0, y: 8 }}
+                                        className="bg-black/30 border border-amber-500/25 rounded-xl p-3 flex gap-3 items-start"
+                                    >
+                                        <MessageSquare className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                                        <div className="flex-1">
+                                            <p className="text-[10px] font-bold text-amber-400 uppercase tracking-widest mb-1">
+                                                Nota clínica — Diente {selectedTooth}
+                                            </p>
+                                            <textarea
+                                                title={`Nota clínica diente ${selectedTooth}`}
+                                                rows={2}
+                                                value={toothNotes[selectedTooth] ?? ''}
+                                                onChange={e => setToothNotes(prev => ({
+                                                    ...prev,
+                                                    [selectedTooth]: e.target.value,
+                                                }))}
+                                                placeholder="Ej: Caries incipiente mesial, vigilar en próxima consulta…"
+                                                className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-1.5 text-white text-xs resize-none focus:border-amber-400/50 outline-none transition-colors"
+                                            />
+                                        </div>
+                                        <button
+                                            type="button"
+                                            title="Cerrar nota"
+                                            onClick={() => setSelectedTooth(null)}
+                                            className="text-clinical/30 hover:text-white transition-colors mt-0.5"
+                                        >
+                                            <X className="w-4 h-4" />
+                                        </button>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
                         </motion.div>
                     )}
 
