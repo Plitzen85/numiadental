@@ -68,7 +68,9 @@ type ChartMode = 'odontogram' | 'periodonto';
 
 // ─── Component ───────────────────────────────────────────────────────────────
 export const HybridChart: React.FC<{ patientId?: string }> = ({ patientId }) => {
-    const { clinicProfile } = useMarket();
+    const { clinicProfile, currentUserId } = useMarket();
+    const currentStaff = clinicProfile?.staff?.find(s => s.id === currentUserId);
+    const ic = clinicProfile?.identidadCorporativa;
     const [chartMode, setChartMode] = useState<ChartMode>('odontogram');
 
     // Merge clinic's custom prices on top of defaults
@@ -168,10 +170,15 @@ export const HybridChart: React.FC<{ patientId?: string }> = ({ patientId }) => 
 
     const handleApprove = async () => {
         if (!patientId || treatments.length === 0) return;
-        if (!window.confirm(`¿Aprobar ${treatments.length} tratamiento(s) y añadirlos al plan?`)) return;
+        if (!window.confirm(`¿Aprobar ${treatments.length} tratamiento(s) y añadirlos al plan?\n\nSe generará un PDF de historial y el odontograma/periodontograma se limpiará para la siguiente consulta.`)) return;
         setIsApproving(true);
+
+        // Generate history snapshot PDF BEFORE clearing
+        generateHistoryPDF();
+
         const record = await loadPatientRecord(patientId);
-        const today = new Date().toISOString().split('T')[0];
+        const nowIso = new Date().toISOString();
+        const today = nowIso.split('T')[0];
         const newItems = treatments.map(t => ({
             id: `odo-${t.id}-${Date.now()}`,
             name: t.name,
@@ -182,18 +189,25 @@ export const HybridChart: React.FC<{ patientId?: string }> = ({ patientId }) => 
             price: t.price,
             discount: discountActive ? 10 : 0,
             estimatedDate: today,
+            createdAt: nowIso,
+            doctorId: currentUserId,
+            doctorName: currentStaff?.nombres ?? '',
+            notes: t.toothNumber && toothNotes[t.toothNumber] ? toothNotes[t.toothNumber] : '',
         }));
         const existingItems = record.treatmentPlan?.items ?? [];
         await savePatientRecord(patientId, {
             treatmentPlan: {
                 items: [...existingItems, ...newItems],
                 notes: record.treatmentPlan?.notes ?? '',
-                updatedAt: new Date().toISOString(),
+                updatedAt: nowIso,
             },
         });
-        // Clear chart for new consultation
+        // Clear entire chart for new consultation
         setSurfaces(Object.fromEntries(allTeeth.map(n => [n, defaultSurfaces()])));
+        setPeriodoData(Object.fromEntries(allTeeth.map(n => [n, defaultPeriodoData()])));
         setTreatments([]);
+        setToothNotes({});
+        setSelectedTooth(null);
         setDiscountActive(false);
         setIsApproving(false);
         setApprovedOk(true);
@@ -201,65 +215,83 @@ export const HybridChart: React.FC<{ patientId?: string }> = ({ patientId }) => 
     };
 
     // ── PDF: generate VIP-style print window ─────────────────────────────────
+    // ── Shared PDF header builder (identidadCorporativa) ────────────────────
+    const buildClinicHeader = (today: string) => {
+        const clinicName = clinicProfile?.nombre ?? 'Nümia Dental';
+        const primary = ic?.colorPrimario ?? '#1e40af';
+        const logoHtml = ic?.logo
+            ? `<img src="${ic.logo}" alt="Logo" style="height:56px;object-fit:contain;margin-bottom:4px" />`
+            : `<div style="font-size:26px;font-weight:900;color:${primary};letter-spacing:-0.5px">${clinicName}</div>`;
+        const doctorLine = currentStaff
+            ? `<div>Dr. ${currentStaff.nombres}${currentStaff.cedProfesional ? ` · Céd. ${currentStaff.cedProfesional}` : ''}</div>`
+            : '';
+        const phone = ic?.telefonoDocumentos || clinicProfile?.telefono || '';
+        const email = ic?.emailDocumentos || clinicProfile?.email || '';
+        const address = ic?.direccionDocumentos || clinicProfile?.direccion || '';
+        const slogan = ic?.slogan ?? '';
+        return { clinicName, primary, logoHtml, doctorLine, phone, email, address, slogan,
+            footer: ic?.pieDePagina ?? `${clinicName} · Plan generado el ${today}`,
+        };
+    };
+
     const handlePDF = () => {
         if (treatments.length === 0) return;
         const patient = clinicProfile?.patients?.find(p => p.id === patientId);
-        const clinicName = clinicProfile?.nombre ?? 'Nümia Dental';
-        const clinicPhone = clinicProfile?.telefono ?? '';
-        const clinicEmail = clinicProfile?.email ?? '';
         const today = new Date().toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' });
+        const { clinicName, primary, logoHtml, doctorLine, phone, email, address, slogan, footer } = buildClinicHeader(today);
 
-        const rows = treatments.map(t => `
-            <tr>
-                <td style="padding:10px 12px;border-bottom:1px solid #f0f0f0;font-weight:600;color:#1e293b">${t.name}</td>
+        const rows = treatments.map(t => {
+            const noteHtml = t.toothNumber && toothNotes[t.toothNumber]
+                ? `<div style="font-size:10px;color:#64748b;margin-top:2px;font-style:italic">${toothNotes[t.toothNumber]}</div>` : '';
+            return `<tr>
+                <td style="padding:10px 12px;border-bottom:1px solid #f0f0f0">
+                    <div style="font-weight:600;color:#1e293b">${t.name}</div>${noteHtml}
+                </td>
                 <td style="padding:10px 12px;border-bottom:1px solid #f0f0f0;color:#64748b;text-align:center">Diente ${t.toothNumber} · ${t.surface}</td>
-                <td style="padding:10px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:#1e40af">$${t.price.toLocaleString('es-MX')}</td>
-            </tr>
-        `).join('');
+                <td style="padding:10px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:${primary}">$${t.price.toLocaleString('es-MX')}</td>
+            </tr>`;
+        }).join('');
 
-        const discountRow = discountActive ? `
-            <tr>
-                <td colspan="2" style="padding:8px 12px;color:#2563eb;font-weight:600">Descuento Comercial (10%)</td>
-                <td style="padding:8px 12px;text-align:right;color:#2563eb;font-weight:700">−$${discountAmt.toLocaleString('es-MX')}</td>
-            </tr>
-        ` : '';
+        const discountRow = discountActive ? `<tr>
+            <td colspan="2" style="padding:8px 12px;color:${primary};font-weight:600">Descuento Comercial (10%)</td>
+            <td style="padding:8px 12px;text-align:right;color:${primary};font-weight:700">−$${discountAmt.toLocaleString('es-MX')}</td>
+        </tr>` : '';
 
         const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
-        <title>Plan de Tratamiento — ${clinicName}</title>
+        <title>Presupuesto — ${clinicName}</title>
         <style>
             *{margin:0;padding:0;box-sizing:border-box}
-            body{font-family:'Segoe UI',Arial,sans-serif;color:#1e293b;background:#fff;padding:40px}
-            .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:40px;padding-bottom:24px;border-bottom:3px solid #1e40af}
-            .clinic-name{font-size:28px;font-weight:900;color:#1e40af;letter-spacing:-0.5px}
-            .clinic-sub{font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:2px;margin-top:2px}
-            .clinic-contact{text-align:right;font-size:12px;color:#64748b;line-height:1.8}
-            .badge{display:inline-block;background:#eff6ff;color:#1e40af;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:2px;padding:4px 10px;border-radius:20px;border:1px solid #bfdbfe;margin-bottom:8px}
-            .patient-box{background:#f8fafc;border-radius:12px;padding:20px;margin-bottom:32px;display:flex;justify-content:space-between}
+            body{font-family:'Segoe UI',Arial,sans-serif;color:#1e293b;background:#fff;padding:36px}
+            .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:32px;padding-bottom:20px;border-bottom:3px solid ${primary}}
+            .clinic-sub{font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:2px;margin-top:3px}
+            .clinic-contact{text-align:right;font-size:11px;color:#64748b;line-height:1.9}
+            .badge{display:inline-block;background:#eff6ff;color:${primary};font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:2px;padding:4px 10px;border-radius:20px;border:1px solid #bfdbfe;margin-bottom:6px}
+            .patient-box{background:#f8fafc;border-radius:12px;padding:18px 20px;margin-bottom:28px;display:flex;justify-content:space-between;gap:12px}
             .patient-label{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#94a3b8;font-weight:700;margin-bottom:2px}
-            .patient-val{font-size:15px;font-weight:700;color:#1e293b}
+            .patient-val{font-size:14px;font-weight:700;color:#1e293b}
             table{width:100%;border-collapse:collapse;margin-bottom:8px}
-            thead tr{background:#1e40af;color:#fff}
-            thead th{padding:12px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px}
+            thead tr{background:${primary};color:#fff}
+            thead th{padding:10px 12px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px}
             thead th:last-child{text-align:right}
-            .totals{background:#f0f7ff;border-radius:10px;padding:16px 20px;margin-top:24px;text-align:right}
-            .total-line{font-size:13px;color:#475569;margin-bottom:4px}
-            .total-main{font-size:26px;font-weight:900;color:#1e40af;margin-top:8px}
-            .footer{margin-top:40px;padding-top:20px;border-top:1px solid #e2e8f0;font-size:10px;color:#94a3b8;text-align:center;line-height:2}
+            .totals{background:#f0f7ff;border-radius:10px;padding:14px 20px;margin-top:20px;text-align:right}
+            .total-line{font-size:12px;color:#475569;margin-bottom:4px}
+            .total-main{font-size:24px;font-weight:900;color:${primary};margin-top:6px}
+            .footer{margin-top:32px;padding-top:16px;border-top:1px solid #e2e8f0;font-size:10px;color:#94a3b8;text-align:center;line-height:2}
             @media print{body{padding:20px}button{display:none}}
         </style></head><body>
-        <div style="text-align:right;margin-bottom:20px;print:display:none">
-            <button onclick="window.print()" style="background:#1e40af;color:#fff;border:none;padding:10px 24px;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px">Imprimir / Guardar PDF</button>
-        </div>
+        <div style="text-align:right;margin-bottom:16px"><button onclick="window.print()" style="background:${primary};color:#fff;border:none;padding:10px 24px;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px">Imprimir / Guardar PDF</button></div>
         <div class="header">
             <div>
                 <div class="badge">Propuesta VIP</div>
-                <div class="clinic-name">${clinicName}</div>
-                <div class="clinic-sub">Plan de Tratamiento Dental</div>
+                ${logoHtml}
+                ${slogan ? `<div class="clinic-sub">${slogan}</div>` : '<div class="clinic-sub">Plan de Tratamiento Dental</div>'}
             </div>
             <div class="clinic-contact">
-                <div>${today}</div>
-                ${clinicPhone ? `<div>${clinicPhone}</div>` : ''}
-                ${clinicEmail ? `<div>${clinicEmail}</div>` : ''}
+                <div style="font-weight:700;color:#1e293b;margin-bottom:4px">${today}</div>
+                ${doctorLine}
+                ${phone ? `<div>${phone}</div>` : ''}
+                ${email ? `<div>${email}</div>` : ''}
+                ${address ? `<div>${address}</div>` : ''}
             </div>
         </div>
         <div class="patient-box">
@@ -284,13 +316,99 @@ export const HybridChart: React.FC<{ patientId?: string }> = ({ patientId }) => 
             <div class="total-line">Subtotal: $${subtotal.toLocaleString('es-MX')}</div>
             <div class="total-main">Total: $${total.toLocaleString('es-MX')}</div>
         </div>
-        <div class="footer">
-            ${clinicName} · Plan generado el ${today}<br>
-            Este documento es una propuesta de tratamiento. Los precios pueden variar.
-        </div>
+        <div class="footer">${footer}<br>Este documento es una propuesta de tratamiento. Los precios pueden variar.</div>
         </body></html>`;
 
         const win = window.open('', '_blank', 'width=900,height=700');
+        if (win) { win.document.write(html); win.document.close(); }
+    };
+
+    // ── History snapshot PDF (odontogram + perio + notes) ───────────────────
+    const generateHistoryPDF = () => {
+        const patient = clinicProfile?.patients?.find(p => p.id === patientId);
+        const today = new Date().toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' });
+        const { clinicName, primary, logoHtml, doctorLine, phone, email, footer } = buildClinicHeader(today);
+
+        // Odontogram findings (non-healthy surfaces)
+        const SURFACE_LABELS: Record<string, string> = { vestibular: 'Vestibular', lingual: 'Lingual', mesial: 'Mesial', distal: 'Distal', oclusal: 'Oclusal' };
+        const odontogramRows = allTeeth.map(n => {
+            const s = surfaces[n];
+            const findings = Object.entries(s)
+                .filter(([, cond]) => cond !== 'healthy')
+                .map(([surf, cond]) => `${SURFACE_LABELS[surf] ?? surf}: ${CONDITION_LABELS[cond as ToothCondition]}`);
+            const note = toothNotes[n] ?? '';
+            if (findings.length === 0 && !note) return '';
+            return `<tr>
+                <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;font-weight:700;color:#1e293b">${n}</td>
+                <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;color:#475569;font-size:12px">${findings.join(', ') || '—'}</td>
+                <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;color:#64748b;font-size:11px;font-style:italic">${note || '—'}</td>
+            </tr>`;
+        }).filter(Boolean).join('');
+
+        // Treatment list
+        const txRows = treatments.map(t => `<tr>
+            <td style="padding:7px 12px;border-bottom:1px solid #f0f0f0;font-weight:600">${t.name}</td>
+            <td style="padding:7px 12px;border-bottom:1px solid #f0f0f0;color:#64748b;text-align:center">D${t.toothNumber} · ${t.surface}</td>
+            <td style="padding:7px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:${primary}">$${t.price.toLocaleString('es-MX')}</td>
+        </tr>`).join('');
+
+        // Perio summary (teeth with probing depth ≥ 4 or bleeding)
+        const periRows = allTeeth.map(n => {
+            const pd = periodoData[n] as any;
+            if (!pd || pd.absent) return '';
+            const depths = [...(pd.probingDepth?.buccal ?? []), ...(pd.probingDepth?.lingual ?? [])];
+            const maxDepth = depths.length ? Math.max(...depths) : 0;
+            const bleeding = pd.bleeding?.buccal || pd.bleeding?.lingual;
+            if (maxDepth < 4 && !bleeding) return '';
+            return `<tr>
+                <td style="padding:6px 12px;border-bottom:1px solid #f0f0f0;font-weight:700">${n}</td>
+                <td style="padding:6px 12px;border-bottom:1px solid #f0f0f0;text-align:center;font-size:12px">${maxDepth} mm</td>
+                <td style="padding:6px 12px;border-bottom:1px solid #f0f0f0;text-align:center;font-size:12px;color:${bleeding ? '#ef4444' : '#22c55e'}">${bleeding ? 'Sí' : 'No'}</td>
+            </tr>`;
+        }).filter(Boolean).join('');
+
+        const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+        <title>Historial Odontológico — ${clinicName}</title>
+        <style>
+            *{margin:0;padding:0;box-sizing:border-box}
+            body{font-family:'Segoe UI',Arial,sans-serif;color:#1e293b;background:#fff;padding:32px;font-size:13px}
+            .header{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:16px;border-bottom:3px solid ${primary};margin-bottom:24px}
+            .clinic-contact{text-align:right;font-size:11px;color:#64748b;line-height:1.8}
+            .section{margin-bottom:24px}
+            .section-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:${primary};margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid #e2e8f0}
+            table{width:100%;border-collapse:collapse}
+            thead tr{background:${primary};color:#fff}
+            thead th{padding:8px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px}
+            .patient-box{background:#f8fafc;border-radius:10px;padding:14px 18px;margin-bottom:20px;display:flex;gap:32px}
+            .lbl{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#94a3b8;font-weight:700;margin-bottom:2px}
+            .val{font-size:14px;font-weight:700}
+            .footer{margin-top:32px;padding-top:14px;border-top:1px solid #e2e8f0;font-size:10px;color:#94a3b8;text-align:center;line-height:1.9}
+            @media print{body{padding:16px}button{display:none}}
+        </style></head><body>
+        <div style="text-align:right;margin-bottom:14px"><button onclick="window.print()" style="background:${primary};color:#fff;border:none;padding:8px 20px;border-radius:7px;font-weight:700;cursor:pointer">Imprimir / Guardar PDF</button></div>
+        <div class="header">
+            <div>${logoHtml}<div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:2px;margin-top:3px">Historial Odontológico</div></div>
+            <div class="clinic-contact"><div style="font-weight:700;color:#1e293b">${today}</div>${doctorLine}${phone ? `<div>${phone}</div>` : ''}${email ? `<div>${email}</div>` : ''}</div>
+        </div>
+        <div class="patient-box">
+            <div><div class="lbl">Paciente</div><div class="val">${patient ? `${patient.nombres} ${patient.apellidos}` : '—'}</div></div>
+            <div><div class="lbl">Folio</div><div class="val">${patient?.folio ?? '—'}</div></div>
+            <div><div class="lbl">Fecha de registro</div><div class="val">${today}</div></div>
+        </div>
+        ${odontogramRows ? `<div class="section"><div class="section-title">Hallazgos Odontograma</div>
+        <table><thead><tr><th>Diente</th><th>Condición por superficie</th><th>Nota clínica</th></tr></thead>
+        <tbody>${odontogramRows}</tbody></table></div>` : ''}
+        ${txRows ? `<div class="section"><div class="section-title">Tratamientos Cotizados</div>
+        <table><thead><tr><th>Tratamiento</th><th style="text-align:center">Localización</th><th style="text-align:right">Precio</th></tr></thead>
+        <tbody>${txRows}</tbody></table>
+        <div style="text-align:right;margin-top:10px;font-size:14px;font-weight:700;color:${primary}">Total: $${(discountActive ? total : subtotal).toLocaleString('es-MX')}</div></div>` : ''}
+        ${periRows ? `<div class="section"><div class="section-title">Alertas Periodontales (PS ≥ 4 mm o sangrado)</div>
+        <table><thead><tr><th>Diente</th><th style="text-align:center">Prof. sondeo máx.</th><th style="text-align:center">Sangrado</th></tr></thead>
+        <tbody>${periRows}</tbody></table></div>` : ''}
+        <div class="footer">${footer}<br>Documento generado automáticamente al aprobar el plan de tratamiento.</div>
+        </body></html>`;
+
+        const win = window.open('', '_blank', 'width=950,height=750');
         if (win) { win.document.write(html); win.document.close(); }
     };
 
@@ -455,6 +573,9 @@ export const HybridChart: React.FC<{ patientId?: string }> = ({ patientId }) => 
                                     ? <CheckCircle2 className="w-3 h-3 text-emerald-400" />
                                     : null
                         )}
+                        <button type="button" onClick={generateHistoryPDF} className="p-2 text-clinical/30 hover:text-amber-400 transition-colors" title="Generar PDF historial (odontograma + perio + notas)">
+                            <FileText className="w-4 h-4" />
+                        </button>
                         <button type="button" onClick={reset} className="p-2 text-clinical/30 hover:text-red-400 transition-colors" title="Reiniciar todo">
                             <RefreshCcw className="w-4 h-4" />
                         </button>

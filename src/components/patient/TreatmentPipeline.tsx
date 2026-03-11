@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Trash2, Edit2, Check, Clock, XCircle, AlertCircle, Loader2, DollarSign, ChevronDown, ChevronRight, Printer, CalendarClock } from 'lucide-react';
+import { Plus, Trash2, Edit2, Check, Clock, XCircle, AlertCircle, Loader2, DollarSign, ChevronDown, ChevronRight, Printer, CalendarClock, MessageSquare } from 'lucide-react';
 import { TreatmentPlan, TreatmentPlanItem, TreatmentStatus } from '../../lib/supabase';
 import { useMarket, StaffMember, isDoctor, Patient } from '../../context/MarketContext';
 import { printTreatmentPlan } from '../../utils/patientPrint';
@@ -314,19 +314,24 @@ const TreatmentCard: React.FC<{
         }
     };
 
+    const [expanded, setExpanded] = useState(false);
+    const fmtDateShort = (iso?: string) => iso ? new Date(iso).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
+
     return (
         <div className="bg-black/30 border border-white/10 rounded-xl p-3 group relative">
             {/* Name + actions */}
             <div className="flex items-start justify-between gap-1 mb-2">
-                <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                <button type="button" onClick={() => setExpanded(v => !v)} className="flex items-center gap-1.5 flex-1 min-w-0 text-left">
                     {item.toothNumber && (
                         <span className="w-5 h-5 bg-electric/10 text-electric text-[8px] font-bold rounded-full flex items-center justify-center flex-shrink-0">
                             {item.toothNumber}
                         </span>
                     )}
-                    <p className="text-white text-xs font-bold leading-tight truncate">{item.name}</p>
-                </div>
-                <div className="flex items-center gap-0.5 flex-shrink-0">
+                    <p className="text-white text-xs font-bold leading-tight flex-1 min-w-0">{item.name}</p>
+                    {item.notes && <MessageSquare className="w-2.5 h-2.5 text-amber-400/60 flex-shrink-0" />}
+                    {expanded ? <ChevronDown className="w-2.5 h-2.5 text-clinical/30 flex-shrink-0" /> : <ChevronRight className="w-2.5 h-2.5 text-clinical/30 flex-shrink-0" />}
+                </button>
+                <div className="flex items-center gap-0.5 flex-shrink-0 ml-1">
                     {!pendingDelete && (
                         <button type="button" onClick={onEdit} title="Editar"
                             className="text-clinical/40 hover:text-electric p-0.5 transition-colors opacity-0 group-hover:opacity-100">
@@ -363,7 +368,30 @@ const TreatmentCard: React.FC<{
                 </span>
             </div>
             {item.doctorName && <p className="text-[9px] text-clinical/30 mb-1 truncate">Dr. {item.doctorName}</p>}
-            {item.notes      && <p className="text-[9px] text-clinical/40 mb-2 truncate">{item.notes}</p>}
+
+            {/* Expanded detail */}
+            {expanded && (
+                <div className="mt-2 pt-2 border-t border-white/8 space-y-1.5 text-[9px] text-clinical/50">
+                    {item.createdAt && (
+                        <div className="flex items-center gap-1"><Clock className="w-2.5 h-2.5" /> Creado: <span className="text-clinical/70">{fmtDateShort(item.createdAt)}</span></div>
+                    )}
+                    {item.surface && (
+                        <div className="flex items-center gap-1"><span className="text-clinical/40">Superficie:</span><span className="text-clinical/70 capitalize">{item.surface}</span></div>
+                    )}
+                    {item.estimatedDate && (
+                        <div className="flex items-center gap-1"><CalendarClock className="w-2.5 h-2.5" /> Estimado: <span className="text-clinical/70">{fmtDateShort(item.estimatedDate)}</span></div>
+                    )}
+                    {item.completedDate && (
+                        <div className="flex items-center gap-1"><Check className="w-2.5 h-2.5 text-emerald-400" /> Completado: <span className="text-emerald-400/70">{fmtDateShort(item.completedDate)}</span></div>
+                    )}
+                    {item.notes && (
+                        <div className="flex items-start gap-1 mt-1 bg-amber-500/5 border border-amber-500/15 rounded-lg p-2">
+                            <MessageSquare className="w-2.5 h-2.5 text-amber-400 mt-0.5 flex-shrink-0" />
+                            <span className="text-amber-300/80 leading-relaxed">{item.notes}</span>
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Status transition buttons — only logical next steps */}
             {nexts.length > 0 && (

@@ -167,6 +167,7 @@ export interface TreatmentPlanItem {
     doctorId?: string;
     doctorName?: string;
     notes?: string;
+    createdAt?: string;          // ISO date when item was added to plan
 }
 
 export interface TreatmentPlan {
