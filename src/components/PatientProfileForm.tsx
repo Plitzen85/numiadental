@@ -92,6 +92,7 @@ export const PatientProfileForm: React.FC<{ isOpen: boolean; onClose: () => void
                     date_1: p.fechaNacimiento,
                     text_cat_entidad: p.entidadNacimiento || '',
                     text_5: p.ciudad,
+                    text_pais: p.pais || 'México',
                     select_2: p.genero,
                     select_3: p.estadoCivil,
                     select_1: p.tipoPaciente.toUpperCase(),
@@ -113,7 +114,7 @@ export const PatientProfileForm: React.FC<{ isOpen: boolean; onClose: () => void
             setActiveTab('personales');
         } else {
             // New patient — optionally pre-fill name from appointment
-            setFormState(initialName ? { text_3: initialName } : {});
+            setFormState(initialName ? { text_3: initialName, text_pais: 'México' } : { text_pais: 'México' });
             setPhoto(null);
         }
     }, [isOpen, patientId, patients, initialName]);
@@ -143,7 +144,7 @@ export const PatientProfileForm: React.FC<{ isOpen: boolean; onClose: () => void
             alertaAdministrativa: formState.text_11 || 'Sin alerta',
             domicilio: formState.text_7 || '',
             ciudad: formState.text_5 || '',
-            pais: 'México',
+            pais: formState.text_pais || 'México',
             foto: photo || undefined,
             saldo: 0,
             ultimaVisita: dateNow
@@ -350,6 +351,17 @@ export const PatientProfileForm: React.FC<{ isOpen: boolean; onClose: () => void
                             <div>
                                 <label className="text-xs font-bold text-gray-500 mb-1 block">Domicilio</label>
                                 <input title="Campo" value={formState["text_7"] || ""} onChange={e => handleInput("text_7", e.target.value)} type="text" className="w-full bg-gray-50 border border-gray-200 rounded-md p-2 text-sm focus:border-electric outline-none transition-colors" />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-6">
+                                <div>
+                                    <label className="text-xs font-bold text-gray-500 mb-1 block">Ciudad</label>
+                                    <input title="Ciudad" value={formState["text_5"] || ""} onChange={e => handleInput("text_5", e.target.value)} type="text" className="w-full bg-gray-50 border border-gray-200 rounded-md p-2 text-sm focus:border-electric outline-none transition-colors" />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-gray-500 mb-1 block">País</label>
+                                    <input title="País" value={formState["text_pais"] || ""} onChange={e => handleInput("text_pais", e.target.value)} type="text" placeholder="México" className="w-full bg-gray-50 border border-gray-200 rounded-md p-2 text-sm focus:border-electric outline-none transition-colors" />
+                                </div>
                             </div>
 
                             <div className="grid grid-cols-2 gap-6">
