@@ -18,6 +18,7 @@ import {
     PatientMedicalHistory, PatientFile,
     PatientVisit, TreatmentPlan, VisitStatus, PatientPayment,
 } from '../lib/supabase';
+import { downloadGIISFiles } from '../lib/giisExporter';
 
 interface PatientProfileProps {
     patientId: string;
@@ -292,6 +293,18 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patie
                             <Link2 className="w-4 h-4" />
                             <span className="hidden sm:inline">{linkCopied ? '¡Copiado!' : 'Link'}</span>
                         </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                const currentRecord = { medicalHistory, files, visits, treatmentPlan, payments, notes: [] };
+                                if (patient) downloadGIISFiles(patient, currentRecord);
+                            }}
+                            title="Exportar archivo GIIS (.TXT/.CIF)"
+                            className="flex items-center gap-1.5 text-sm font-bold px-3 py-2 rounded-xl transition-all border border-japandi-wood/30 bg-japandi-wood/5 hover:bg-japandi-wood/10 text-japandi-wood"
+                        >
+                            <FileSignature className="w-4 h-4" />
+                            <span className="hidden sm:inline">Exportar GIIS</span>
+                        </button>
                         <button type="button" onClick={() => setIsAIAssistantOpen(true)} className="bg-electric/20 text-electric hover:bg-electric/30 border border-electric/30 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors shadow-[0_0_15px_rgba(0,212,255,0.2)]">
                             <Sparkles className="w-4 h-4" /> NÜMIA AI
                         </button>
@@ -473,7 +486,7 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patie
                                                 </div>
                                                 <button
                                                     type="button"
-                                                    onClick={() => patient && printConsentDocument(`${patient.nombres} ${patient.apellidos}`, clinicProfile?.nombre ?? 'Nümia Dental', consentData)}
+                                                    onClick={() => patient && printConsentDocument(`${patient.nombres} ${patient.primerApellido}`, clinicProfile?.nombre ?? 'Nümia Dental', consentData)}
                                                     className="flex items-center gap-2 text-xs font-bold px-4 py-2 rounded-xl border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/20 transition-all whitespace-nowrap"
                                                 >
                                                     <Printer className="w-3.5 h-3.5" /> Ver / Imprimir
@@ -596,7 +609,7 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patie
                                                 onSave={handleSaveVisit}
                                                 canDelete={selectedVisit.doctorId === currentUserId || !!(currentDoctor as any)?.isMasterAdmin}
                                                 onDelete={() => handleDeleteVisit(selectedVisit.id)}
-                                                patientName={patient ? `${patient.nombres} ${patient.apellidos}` : patientName}
+                                                patientName={patient ? `${patient.nombres} ${patient.primerApellido} ${patient.segundoApellido}` : patientName}
                                                 clinicName={clinicProfile?.nombre ?? 'Nümia Dental'}
                                             />
                                         ) : (

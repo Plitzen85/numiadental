@@ -328,7 +328,7 @@ export const Agenda: React.FC = () => {
         advanceApptStatus(appt, 'billed');
         // Find linked patient to open finanzas
         const patId = appt.linkedPatientId ?? patients.find(p =>
-            `${p.nombres} ${p.apellidos}`.toLowerCase() === appt.patientName.toLowerCase() ||
+            `${p.nombres} ${p.primerApellido}`.toLowerCase() === appt.patientName.toLowerCase() ||
             appt.patientName.toLowerCase().includes(p.nombres.toLowerCase())
         )?.id;
         if (patId) {
@@ -342,7 +342,7 @@ export const Agenda: React.FC = () => {
         const patient = appt.linkedPatientId
             ? patients.find(p => p.id === appt.linkedPatientId)
             : patients.find(p =>
-                `${p.nombres} ${p.apellidos}`.toLowerCase() === appt.patientName.toLowerCase() ||
+                `${p.nombres} ${p.primerApellido}`.toLowerCase() === appt.patientName.toLowerCase() ||
                 appt.patientName.toLowerCase().includes(p.nombres.toLowerCase())
             );
         const phone = patient?.telefono?.replace(/\D/g, '');
@@ -574,7 +574,7 @@ export const Agenda: React.FC = () => {
                                         <Cake className="w-4 h-4 shrink-0 text-pink-400" />
                                         <span>
                                             <span className="font-bold">¡Cumpleaños hoy!</span>{' '}
-                                            {birthdayPatients.map(p => `${p.nombres} ${p.apellidos}`).join(', ')}
+                                            {birthdayPatients.map(p => `${p.nombres} ${p.primerApellido}`).join(', ')}
                                         </span>
                                     </div>
                                 )}
@@ -935,7 +935,7 @@ export const Agenda: React.FC = () => {
             {isPatientViewOpen && (
                 <PatientProfile
                     patientId={selectedPatientId ?? ''}
-                    patientName={patients.find(p => p.id === selectedPatientId) ? `${patients.find(p => p.id === selectedPatientId)?.nombres} ${patients.find(p => p.id === selectedPatientId)?.apellidos}` : 'Paciente Seleccionado'}
+                    patientName={patients.find(p => p.id === selectedPatientId) ? `${patients.find(p => p.id === selectedPatientId)?.nombres} ${patients.find(p => p.id === selectedPatientId)?.primerApellido}` : 'Paciente Seleccionado'}
                     onClose={() => { setIsPatientViewOpen(false); setPatientProfileTab('historial'); }}
                     initialTab={patientProfileTab}
                 />
@@ -989,8 +989,8 @@ export const Agenda: React.FC = () => {
                                                 const q = menuPatientSearch.toLowerCase();
                                                 return q.length >= 1 && (
                                                     p.nombres.toLowerCase().includes(q) ||
-                                                    p.apellidos.toLowerCase().includes(q) ||
-                                                    `${p.nombres} ${p.apellidos}`.toLowerCase().includes(q) ||
+                                                    (p.primerApellido || '').toLowerCase().includes(q) ||
+                                                    `${p.nombres} ${p.primerApellido}`.toLowerCase().includes(q) ||
                                                     p.folio.includes(q)
                                                 );
                                             })
@@ -1016,7 +1016,7 @@ export const Agenda: React.FC = () => {
                                                     }}
                                                     className="w-full text-left px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition-colors"
                                                 >
-                                                    <div className="text-sm font-semibold text-white">{p.nombres} {p.apellidos}</div>
+                                                    <div className="text-sm font-semibold text-white">{p.nombres} {p.primerApellido}</div>
                                                     <div className="text-xs text-clinical/50">{p.folio} · {p.telefono || 'Sin teléfono'}</div>
                                                 </button>
                                             ))}

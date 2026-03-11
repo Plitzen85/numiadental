@@ -393,7 +393,7 @@ export const HybridChart: React.FC<{ patientId?: string }> = ({ patientId }) => 
         <div class="patient-box">
             <div>
                 <div class="patient-label">Paciente</div>
-                <div class="patient-val">${patient ? `${patient.nombres} ${patient.apellidos}` : 'Sin nombre registrado'}</div>
+                <div class="patient-val">${patient ? `${patient.nombres} ${patient.primerApellido}` : 'Sin nombre registrado'}</div>
             </div>
             <div style="text-align:right">
                 <div class="patient-label">Folio</div>
@@ -504,7 +504,7 @@ export const HybridChart: React.FC<{ patientId?: string }> = ({ patientId }) => 
             <div class="clinic-contact"><div style="font-weight:700;color:#1e293b">${snapDate}</div>${snapDoctorLine}${phone ? `<div>${phone}</div>` : ''}${email ? `<div>${email}</div>` : ''}</div>
         </div>
         <div class="patient-box">
-            <div><div class="lbl">Paciente</div><div class="val">${patient ? `${patient.nombres} ${patient.apellidos}` : '—'}</div></div>
+            <div><div class="lbl">Paciente</div><div class="val">${patient ? `${patient.nombres} ${patient.primerApellido}` : '—'}</div></div>
             <div><div class="lbl">Folio</div><div class="val">${patient?.folio ?? '—'}</div></div>
             <div><div class="lbl">Fecha de registro</div><div class="val">${snapDate}</div></div>
         </div>

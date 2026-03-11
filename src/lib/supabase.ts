@@ -112,7 +112,8 @@ export interface PatientVisit {
     doctorId: string;
     doctorName: string;
     chiefComplaint: string;
-    diagnosis: string;
+    diagnosis: string;        // Full display string: "K021 - Caries de la dentina"
+    diagnosisCode?: string;   // NOM-024 CIE-10 code only: "K021"
     procedures: string;
     evolutionNote: string;
     nextAppointment?: string;
@@ -222,6 +223,36 @@ const DEFAULT_PATIENT_RECORD: PatientRecordData = {
     payments: [],
 };
 
+// ─── Audit Log helpers (NOM-024 / SGSI) ───────────────────────────────────────
+
+export type AuditAction = 'READ' | 'WRITE' | 'DELETE' | 'EXPORT' | 'LOGIN' | 'LOGOUT';
+
+/** Logs a security or clinical event to the audit_logs table */
+export async function logAuditAction(
+    patientId: string | null,
+    action: AuditAction,
+    metadata?: any
+): Promise<void> {
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        // Fallback to currentUserId from context if auth user is missing (mock auth)
+        const userId = user?.id || null;
+
+        await supabase.from('audit_logs').insert({
+            user_id: userId,
+            patient_id: patientId,
+            action,
+            metadata: {
+                ...metadata,
+                timestamp: new Date().toISOString(),
+                userAgent: navigator.userAgent
+            }
+        });
+    } catch (e) {
+        console.warn('[Audit] Failed to log action:', e);
+    }
+}
+
 // ─── Patient record helpers ───────────────────────────────────────────────────
 
 /** Load a patient's full clinical record from Supabase */
@@ -240,6 +271,10 @@ export async function loadPatientRecord(patientId: string): Promise<PatientRecor
             }
             return { ...DEFAULT_PATIENT_RECORD };
         }
+
+        // SGSI: Log READ access
+        logAuditAction(patientId, 'READ', { module: 'ClinicalRecord' });
+
         return { ...DEFAULT_PATIENT_RECORD, ...(data?.data_json as PatientRecordData) };
     } catch (e) {
         console.error('[Supabase] Patient record network error:', e);
@@ -270,6 +305,13 @@ export async function savePatientRecord(
             console.error('[Supabase] Patient record save error:', error.message);
             return { success: false, error: error.message };
         }
+
+        // SGSI: Log WRITE access
+        logAuditAction(patientId, 'WRITE', {
+            module: 'ClinicalRecord',
+            fields: Object.keys(data)
+        });
+
         return { success: true };
     } catch (e: any) {
         console.error('[Supabase] Patient record network error saving:', e);

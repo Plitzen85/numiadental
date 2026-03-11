@@ -18,8 +18,8 @@ export const PatientDirectory: React.FC<PatientDirectoryProps> = ({ onOpenProfil
     const filteredPatients = patients.filter(p => {
         const matchesSearch =
             p.nombres.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            p.apellidos.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            p.folio.includes(searchTerm) ||
+            (p.primerApellido || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            p.folio.toLowerCase().includes(searchTerm.toLowerCase()) ||
             p.telefono.includes(searchTerm);
 
         if (filterType === 'Todos') return matchesSearch;
@@ -146,7 +146,7 @@ export const PatientDirectory: React.FC<PatientDirectoryProps> = ({ onOpenProfil
 
                             <div className="mb-4">
                                 <h3 className="font-syne font-bold text-lg text-white mb-1 group-hover:text-electric transition-colors">
-                                    {patient.nombres} {patient.apellidos}
+                                    {patient.nombres} {patient.primerApellido}
                                 </h3>
                                 <div className="text-xs text-clinical/60 font-mono">Pac. #{patient.numeroPaciente} • {patient.tipoPaciente}</div>
                             </div>
@@ -240,7 +240,7 @@ export const PatientDirectory: React.FC<PatientDirectoryProps> = ({ onOpenProfil
                                                 </div>
                                                 <div>
                                                     <div className="font-syne font-bold text-white group-hover:text-electric transition-colors">
-                                                        {patient.nombres} {patient.apellidos}
+                                                        {patient.nombres} {patient.primerApellido}
                                                     </div>
                                                     <div className="text-xs text-clinical/50 font-mono">
                                                         Pac. #{patient.numeroPaciente} • {patient.tipoPaciente}

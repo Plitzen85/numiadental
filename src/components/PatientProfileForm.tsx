@@ -6,6 +6,7 @@ import { X, Printer, Link2 } from 'lucide-react';
 import { useMarket } from '../context/MarketContext';
 import { printPatientRecord, getOrCreateToken } from '../utils/patientPrint';
 import { loadPatientRecord, savePatientRecord, PatientMedicalHistory } from '../lib/supabase';
+import { ENTIDADES_FEDERATIVAS } from '../lib/catalogs';
 
 export const PatientProfileForm: React.FC<{ isOpen: boolean; onClose: () => void; patientId?: string; initialName?: string; onPatientSaved?: (patientId: string) => void }> = ({ isOpen, onClose, patientId, initialName, onPatientSaved }) => {
     const { patients, setPatients, clinicProfile } = useMarket();
@@ -81,11 +82,15 @@ export const PatientProfileForm: React.FC<{ isOpen: boolean; onClose: () => void
             if (p) {
                 const baseState: Record<string, string> = {
                     text_1: p.folio,
-                    text_3: p.nombres + ' ' + p.apellidos,
+                    text_curp: p.curp || '',
+                    text_nombres: p.nombres,
+                    text_primer_apellido: p.primerApellido || '',
+                    text_segundo_apellido: p.segundoApellido || '',
                     text_7: p.domicilio,
                     text_8: p.telefono,
                     email_1: p.email,
                     date_1: p.fechaNacimiento,
+                    text_cat_entidad: p.entidadNacimiento || '',
                     text_5: p.ciudad,
                     select_2: p.genero,
                     select_3: p.estadoCivil,
@@ -115,7 +120,6 @@ export const PatientProfileForm: React.FC<{ isOpen: boolean; onClose: () => void
 
     const handleSave = () => {
         const dateNow = new Date().toISOString().split('T')[0];
-        const names = formState.text_3?.split(' ') || [];
         const existingPatient = patientId ? patients.find(p => p.id === patientId) : undefined;
         // Consecutive ID: keep existing one on edit, assign next available on creation
         const nextNumero = existingPatient?.numeroPaciente ??
@@ -124,13 +128,16 @@ export const PatientProfileForm: React.FC<{ isOpen: boolean; onClose: () => void
             id: patientId || Date.now().toString(),
             numeroPaciente: nextNumero,
             folio: formState.text_1 || String(nextNumero).padStart(6, '0'),
-            nombres: names[0] || 'Nuevo',
-            apellidos: names.slice(1).join(' ') || 'Paciente',
+            curp: formState.text_curp?.toUpperCase() || '',
+            nombres: formState.text_nombres || 'Nuevo',
+            primerApellido: formState.text_primer_apellido || 'Paciente',
+            segundoApellido: formState.text_segundo_apellido || '',
             email: formState.email_1 || '',
             telefono: formState.text_8 || '',
             genero: formState.select_2 || 'Otro',
             estadoCivil: formState.select_3 || 'Soltero',
             fechaNacimiento: formState.date_1 || '',
+            entidadNacimiento: formState.text_cat_entidad || '',
             tipoPaciente: formState.select_1 || 'GENERAL',
             alertaMedica: formState.text_10 || 'Sin alerta',
             alertaAdministrativa: formState.text_11 || 'Sin alerta',
@@ -274,11 +281,27 @@ export const PatientProfileForm: React.FC<{ isOpen: boolean; onClose: () => void
                             </div>
                         </div>
 
-                        {/* Name & Basic Demographics */}
+                        {/* Name & Basic Demographics (NOM-024 Compliant) */}
                         <div className="space-y-4">
-                            <div>
-                                <label className="text-xs font-bold text-gray-500 mb-1 block">Nombres y Apellidos*</label>
-                                <input title="Campo" value={formState["text_3"] || ""} onChange={e => handleInput("text_3", e.target.value)} type="text" className="w-full bg-gray-50 border border-gray-200 rounded-md p-2 text-sm focus:border-electric outline-none transition-colors" />
+                            <div className="grid grid-cols-2 gap-6">
+                                <div>
+                                    <label className="text-xs font-bold text-gray-500 mb-1 block uppercase tracking-wider">CURP*</label>
+                                    <input title="CURP" value={formState["text_curp"] || ""} onChange={e => handleInput("text_curp", e.target.value)} type="text" maxLength={18} placeholder="ABC123456HDFR00" className="w-full bg-gray-50 border border-gray-200 rounded-md p-2 text-sm focus:border-electric outline-none transition-colors uppercase tracking-widest font-mono" />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-3 gap-6">
+                                <div className="col-span-1">
+                                    <label className="text-xs font-bold text-gray-500 mb-1 block uppercase tracking-wider">Nombre(s)*</label>
+                                    <input title="Nombre(s)" value={formState["text_nombres"] || ""} onChange={e => handleInput("text_nombres", e.target.value)} type="text" className="w-full bg-gray-50 border border-gray-200 rounded-md p-2 text-sm focus:border-electric outline-none transition-colors" />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-gray-500 mb-1 block uppercase tracking-wider">Primer Apellido*</label>
+                                    <input title="Primer Apellido" value={formState["text_primer_apellido"] || ""} onChange={e => handleInput("text_primer_apellido", e.target.value)} type="text" className="w-full bg-gray-50 border border-gray-200 rounded-md p-2 text-sm focus:border-electric outline-none transition-colors" />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-gray-500 mb-1 block uppercase tracking-wider">Segundo Apellido</label>
+                                    <input title="Segundo Apellido" value={formState["text_segundo_apellido"] || ""} onChange={e => handleInput("text_segundo_apellido", e.target.value)} type="text" className="w-full bg-gray-50 border border-gray-200 rounded-md p-2 text-sm focus:border-electric outline-none transition-colors" />
+                                </div>
                             </div>
                             <div>
                                 <label className="text-xs font-bold text-gray-500 mb-1 block">Nombre Favorito / Alias</label>
@@ -305,8 +328,11 @@ export const PatientProfileForm: React.FC<{ isOpen: boolean; onClose: () => void
 
                             <div className="grid grid-cols-2 gap-6">
                                 <div>
-                                    <label className="text-xs font-bold text-gray-500 mb-1 block">Lugar de nacimiento</label>
-                                    <input title="Campo" value={formState["text_5"] || ""} onChange={e => handleInput("text_5", e.target.value)} type="text" placeholder="Escribe aquí" className="w-full bg-gray-50 border border-gray-200 rounded-md p-2 text-sm focus:border-electric outline-none transition-colors" />
+                                    <label className="text-xs font-bold text-gray-500 mb-1 block">Entidad Federativa de Nacimiento*</label>
+                                    <select title="Entidad" value={formState["text_cat_entidad"] || ""} onChange={e => handleInput("text_cat_entidad", e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-md p-2 text-sm focus:border-electric outline-none transition-colors">
+                                        <option value="">Selecciona Estado...</option>
+                                        {ENTIDADES_FEDERATIVAS.map(ef => <option key={ef.code} value={ef.code}>{ef.name}</option>)}
+                                    </select>
                                 </div>
                                 <div>
                                     <label className="text-xs font-bold text-gray-500 mb-1 block">Estado civil</label>

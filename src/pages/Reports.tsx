@@ -583,7 +583,7 @@ export const Reports: React.FC = () => {
                                         const dias = last ? Math.floor((Date.now() - last.getTime()) / (1000 * 60 * 60 * 24)) : null;
                                         return (
                                             <tr key={p.id} className="border-t border-white/5 hover:bg-white/3 transition-colors">
-                                                <td className="px-5 py-3 font-bold text-white">{p.nombres} {p.apellidos}</td>
+                                                <td className="px-5 py-3 font-bold text-white">{p.nombres} {p.primerApellido}</td>
                                                 <td className="px-5 py-3 text-clinical/50">{p.telefono ?? '—'}</td>
                                                 <td className="px-5 py-3 text-clinical/50">
                                                     {last ? last.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Sin registro'}

@@ -81,16 +81,17 @@ export const RegistroPaciente: React.FC = () => {
             const found = profile.patients?.find(p => p.registroToken === token);
             if (found) {
                 setPatient(found);
-                setConsentName(`${found.nombres} ${found.apellidos}`);
-                setForm({
-                    nombres: found.nombres, apellidos: found.apellidos,
+                setConsentName(`${found.nombres} ${found.primerApellido}`);
+                setForm(prev => ({
+                    ...prev,
+                    nombres: found.nombres, apellidos: found.primerApellido, // Changed from found.apellidos to found.primerApellido
                     email: found.email, telefono: found.telefono,
                     fechaNacimiento: found.fechaNacimiento,
                     genero: found.genero, estadoCivil: found.estadoCivil,
                     domicilio: found.domicilio, ciudad: found.ciudad,
                     motivoConsulta: '', alergias: '', enfermedades: '',
                     medicamentos: '', fumador: 'No', alcohol: 'No',
-                });
+                }));
                 // Load patient record — treatment plan + consent
                 try {
                     const rec = await loadPatientRecord(found.id);
@@ -117,7 +118,7 @@ export const RegistroPaciente: React.FC = () => {
                         if (raw._consentimiento) {
                             const c = raw._consentimiento as { checks: boolean[]; name: string; date: string };
                             setConsentChecks(c.checks ?? Array(CONSENT_ITEMS.length).fill(false));
-                            setConsentName(c.name ?? `${found.nombres} ${found.apellidos}`);
+                            setConsentName(c.name ?? `${found.nombres} ${found.primerApellido}`); // Changed from found.apellidos to found.primerApellido
                             setConsentDate(c.date ?? '');
                             if (c.checks?.every(Boolean) && c.name) setConsentSaved(true);
                         }
@@ -196,7 +197,7 @@ export const RegistroPaciente: React.FC = () => {
             setConsentSaved(true);
             // Auto-open consent PDF so the patient can save/print it
             printConsentDocument(
-                `${patient.nombres} ${patient.apellidos}`,
+                `${patient.nombres} ${patient.primerApellido}`,
                 clinicName,
                 consentPayload,
             );
@@ -273,7 +274,7 @@ export const RegistroPaciente: React.FC = () => {
                                 }
                             </div>
                             <div>
-                                <h1 className="text-xl font-black text-gray-800">{patient.nombres} {patient.apellidos}</h1>
+                                <h1 className="text-xl font-black text-gray-800">{patient.nombres} {patient.primerApellido}</h1>
                                 <p className="text-xs text-gray-400 mt-0.5">
                                     Paciente #{patient.numeroPaciente} · {patient.tipoPaciente}
                                 </p>
@@ -530,7 +531,7 @@ export const RegistroPaciente: React.FC = () => {
                             </p>
                             <button
                                 type="button"
-                                onClick={() => patient && printConsentDocument(`${patient.nombres} ${patient.apellidos}`, clinicName, { checks: consentChecks, name: consentName, date: consentDate })}
+                                onClick={() => patient && printConsentDocument(`${patient.nombres} ${patient.primerApellido}`, clinicName, { checks: consentChecks, name: consentName, date: consentDate })}
                                 className="inline-flex items-center gap-2 mt-2 px-4 py-2 rounded-lg border border-emerald-300 text-emerald-700 text-sm font-semibold hover:bg-emerald-100 transition-colors"
                             >
                                 <Printer className="w-4 h-4" /> Imprimir / Guardar PDF

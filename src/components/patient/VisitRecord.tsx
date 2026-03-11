@@ -7,6 +7,7 @@ import {
     uploadPatientFile, deletePatientFile,
 } from '../../lib/supabase';
 import { printPrescription } from '../../utils/patientPrint';
+import { CIE10_DENTAL } from '../../lib/catalogs';
 
 // ─── Vademecum autocomplete ───────────────────────────────────────────────────
 
@@ -91,6 +92,50 @@ const MedicationNameInput: React.FC<{
                             className="w-full text-left px-3 py-2 hover:bg-blue-50 transition-colors border-b border-gray-50 last:border-0 flex flex-col gap-0.5">
                             <span className="text-sm font-bold text-gray-800">{s.name}</span>
                             {s.strength && <span className="text-[10px] text-gray-400">{s.strength}</span>}
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
+const DiagnosisSearch: React.FC<{
+    value: string;
+    onSelect: (code: string, full: string) => void;
+}> = ({ value, onSelect }) => {
+    const [query, setQuery] = useState(value);
+    const [open, setOpen] = useState(false);
+    const wrapRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => { setQuery(value); }, [value]);
+
+    const filtered = CIE10_DENTAL.filter(item =>
+        item.code.toLowerCase().includes(query.toLowerCase()) ||
+        item.description.toLowerCase().includes(query.toLowerCase())
+    ).slice(0, 10);
+
+    return (
+        <div ref={wrapRef} className="relative w-full">
+            <input
+                type="text"
+                value={query}
+                onChange={e => { setQuery(e.target.value); setOpen(true); }}
+                onFocus={() => setOpen(true)}
+                placeholder="Busca Código o Diagnóstico (CIE-10)..."
+                className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-clinical/90 text-sm focus:border-electric outline-none"
+            />
+            {open && query.length > 0 && filtered.length > 0 && (
+                <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-[#1a1a2a] border border-white/10 rounded-xl shadow-2xl overflow-hidden max-h-60 overflow-y-auto">
+                    {filtered.map((item) => (
+                        <button key={item.code} type="button" onClick={() => {
+                            const full = `${item.code} - ${item.description}`;
+                            setQuery(full);
+                            onSelect(item.code, full);
+                            setOpen(false);
+                        }} className="w-full text-left px-4 py-2 hover:bg-white/5 transition-colors border-b border-white/5 last:border-0 flex flex-col">
+                            <span className="text-xs font-bold text-[#00d4ff]">{item.code}</span>
+                            <span className="text-[11px] text-white/70">{item.description}</span>
                         </button>
                     ))}
                 </div>
@@ -299,9 +344,17 @@ export const VisitRecord: React.FC<VisitRecordProps> = ({
                         </div>
 
                         {/* Clinical text fields */}
+                        <div>
+                            <label className="text-[10px] text-clinical/40 uppercase tracking-widest mb-1.5 block">Diagnóstico (CIE-10)*</label>
+                            <DiagnosisSearch
+                                value={local.diagnosis}
+                                onSelect={(code, full) => update({ diagnosisCode: code, diagnosis: full })}
+                            />
+                        </div>
+
                         {([
                             { key: 'chiefComplaint',  label: 'Motivo de Consulta',                      placeholder: '¿Por qué viene el paciente hoy?',                                     rows: 2 },
-                            { key: 'diagnosis',        label: 'Diagnóstico',                              placeholder: 'Diagnóstico clínico...',                                              rows: 2 },
+                            // { key: 'diagnosis',        label: 'Diagnóstico',                              placeholder: 'Diagnóstico clínico...',                                              rows: 2 },
                             { key: 'procedures',       label: 'Plan de Trabajo y Tratamientos Realizados', placeholder: 'Procedimientos y tratamientos realizados en esta consulta...',        rows: 3 },
                             { key: 'evolutionNote',    label: 'Nota de Evolución',                        placeholder: 'Evolución, observaciones, indicaciones al paciente...',               rows: 3 },
                             { key: 'nextAppointment',  label: 'Próxima Cita (observaciones)',              placeholder: 'Ej. Cita en 3 semanas para revisión del tratamiento...',             rows: 1 },

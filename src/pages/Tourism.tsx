@@ -376,10 +376,10 @@ export const Tourism: React.FC = () => {
         duracion: 4,
         ciudadOrigen: 'Los Angeles, USA',
         acompanantes: 1,
-        costoTratamiento: 25000,
+        costoTratamiento: 0,
         tipoHospedaje: 'Departamento Estándar',
         costoHospedajeCustom: 0,       // per-night price for "Otra" option
-        costoAvion: 6500,
+        costoAvion: 0,
         costoTransporte: 2000,
         costoComida: 2000,
         comisionPerc1: 0,
@@ -392,6 +392,23 @@ export const Tourism: React.FC = () => {
     const lockedTreatment = (clinicProfile?.catalogoExtra ?? []).find(
         t => t.name === params.tratamiento && t.price > 0
     ) ?? null;
+
+    // Auto-sync tratamiento to first catalog item when catalog loads and current value isn't in it
+    useEffect(() => {
+        const catalog = clinicProfile?.catalogoExtra ?? [];
+        if (catalog.length > 0) {
+            const inCatalog = catalog.find(t => t.name === params.tratamiento);
+            if (!inCatalog) {
+                const first = catalog[0];
+                setParams(prev => ({
+                    ...prev,
+                    tratamiento: first.name,
+                    ...(first.price > 0 ? { costoTratamiento: first.price } : {}),
+                }));
+            }
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [clinicProfile?.catalogoExtra]);
 
     useEffect(() => {
         if (lockedTreatment) {

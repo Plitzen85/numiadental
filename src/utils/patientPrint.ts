@@ -234,7 +234,7 @@ export function printPatientRecord(
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Expediente — ${patient.nombres} ${patient.apellidos}</title>
+  <title>Expediente — ${patient.nombres} ${patient.primerApellido}</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:'Helvetica Neue',Arial,sans-serif;font-size:12px;color:#1a1a2e;line-height:1.6;background:#fff}
@@ -288,7 +288,7 @@ export function printPatientRecord(
   <div class="section">
     <div class="section-title">Datos de Identificación</div>
     <div class="grid">
-      ${field('Nombre completo', `${patient.nombres} ${patient.apellidos}`)}
+      ${field('Nombre completo', `${patient.nombres} ${patient.primerApellido} ${patient.segundoApellido}`)}
       ${field('Fecha de nacimiento', patient.fechaNacimiento)}
       ${field('Género', patient.genero)}
       ${field('Estado civil', patient.estadoCivil)}
@@ -726,7 +726,7 @@ export function printTreatmentPlan(
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Presupuesto — ${patient.nombres} ${patient.apellidos}</title>
+  <title>Presupuesto — ${patient.nombres} ${patient.primerApellido}</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:'Helvetica Neue',Arial,sans-serif;font-size:12px;color:#1a1a2e;line-height:1.6;background:#fff}
@@ -772,7 +772,7 @@ export function printTreatmentPlan(
     <div>${buildBrandedHeader(clinicName, branding)}</div>
     <div class="meta">
       <strong>PRESUPUESTO / PLAN DENTAL</strong><br>
-      Paciente: ${patient.nombres} ${patient.apellidos}<br>
+      Paciente: ${patient.nombres} ${patient.primerApellido}<br>
       Folio: ${patient.folio ?? patient.numeroPaciente}<br>
       Generado: ${fmt(new Date())}
     </div>
@@ -794,7 +794,7 @@ export function printTreatmentPlan(
   </div>
 
   <div class="patient-block">
-    <div class="pfield"><label>Paciente</label><span>${patient.nombres} ${patient.apellidos}</span></div>
+    <div class="pfield"><label>Paciente</label><span>${patient.nombres} ${patient.primerApellido}</span></div>
     <div class="pfield"><label>Teléfono</label><span>${patient.telefono || '—'}</span></div>
     <div class="pfield"><label>Correo</label><span>${patient.email || '—'}</span></div>
   </div>

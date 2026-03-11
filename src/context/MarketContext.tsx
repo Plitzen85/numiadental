@@ -20,13 +20,16 @@ export interface Patient {
     id: string;
     numeroPaciente: number;  // Auto-assigned consecutive ID, immutable after creation
     folio: string;
+    curp: string;           // NOM-024 Required
     nombres: string;
-    apellidos: string;
+    primerApellido: string;  // NOM-024 Required
+    segundoApellido: string; // NOM-024 Required
     email: string;
     telefono: string;
     genero: string;
     estadoCivil: string;
     fechaNacimiento: string;
+    entidadNacimiento: string; // NOM-024 Required (MEX state code/name)
     tipoPaciente: string;
     alertaMedica: string;
     alertaAdministrativa: string;
