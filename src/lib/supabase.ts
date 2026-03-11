@@ -177,6 +177,21 @@ export interface TreatmentPlan {
     createdAt?: string;  // ISO date when the plan was first created (used for validity window)
 }
 
+// ─── Odontogram History Snapshot ──────────────────────────────────────────────
+
+export interface OdontogramSnapshot {
+    id: string;
+    createdAt: string;
+    doctorId?: string;
+    doctorName?: string;
+    surfaces: Record<number, unknown>;
+    periodoData: Record<number, unknown>;
+    toothNotes: Record<number, string>;
+    treatments: Array<{ id: string; toothNumber: number; surface: string; condition: string; price: number; name: string }>;
+    discountActive: boolean;
+    total: number;
+}
+
 export interface PatientRecordData {
     notes: PatientNote[];
     chartData?: {
@@ -189,6 +204,7 @@ export interface PatientRecordData {
     visits: PatientVisit[];
     treatmentPlan: TreatmentPlan;
     payments: PatientPayment[];     // All cobros registered for this patient
+    odontogramHistory?: OdontogramSnapshot[]; // Approved odontogram snapshots history
     clinicalFormState?: Record<string, string>; // Full clinical questionnaire from PatientProfileForm
     _consentimiento?: { checks: boolean[]; name: string; date: string }; // Digital consent from patient portal
     _preregistro?: Record<string, string>; // Pre-registration form from patient portal

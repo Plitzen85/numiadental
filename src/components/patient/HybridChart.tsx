@@ -4,7 +4,7 @@ import { RefreshCcw, FileText, CheckCircle2, Activity, Stethoscope, Save, Messag
 import { useMarket } from '../../context/MarketContext';
 import { ToothSVG, ToothSurface, ToothCondition, ToothSurfaceMap, CONDITION_LABELS, defaultSurfaces } from './ToothSVG';
 import { PeriodoGrid, PeriodoData, defaultPeriodoData } from './PeriodoGrid';
-import { loadPatientRecord, savePatientRecord } from '../../lib/supabase';
+import { loadPatientRecord, savePatientRecord, OdontogramSnapshot } from '../../lib/supabase';
 
 // ─── Tooth layout ─────────────────────────────────────────────────────────────
 const UPPER_ADULT = [18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28];
@@ -97,6 +97,9 @@ export const HybridChart: React.FC<{ patientId?: string }> = ({ patientId }) => 
     const [toothNotes, setToothNotes] = useState<Record<number, string>>({});
     const [selectedTooth, setSelectedTooth] = useState<number | null>(null);
 
+    // Odontogram history (approved snapshots)
+    const [odontogramHistory, setOdontogramHistory] = useState<OdontogramSnapshot[]>([]);
+
     // ── Persist state ────────────────────────────────────────────────────────
     const [isSaving, setIsSaving] = useState(false);
     const [savedOk, setSavedOk] = useState(false);
@@ -113,6 +116,7 @@ export const HybridChart: React.FC<{ patientId?: string }> = ({ patientId }) => 
                 const cd = record.chartData as unknown as { toothNotes?: Record<number, string> };
                 if (cd.toothNotes) setToothNotes(cd.toothNotes);
             }
+            if (record.odontogramHistory) setOdontogramHistory(record.odontogramHistory);
         });
     }, [patientId]);
 
@@ -173,12 +177,29 @@ export const HybridChart: React.FC<{ patientId?: string }> = ({ patientId }) => 
         if (!window.confirm(`¿Aprobar ${treatments.length} tratamiento(s) y añadirlos al plan?\n\nSe generará un PDF de historial y el odontograma/periodontograma se limpiará para la siguiente consulta.`)) return;
         setIsApproving(true);
 
+        const nowIso = new Date().toISOString();
+        const today = nowIso.split('T')[0];
+
+        // Save snapshot to history BEFORE clearing
+        const snapshot: OdontogramSnapshot = {
+            id: `snap-${Date.now()}`,
+            createdAt: nowIso,
+            doctorId: currentUserId,
+            doctorName: currentStaff?.nombres ?? '',
+            surfaces: surfaces as unknown as Record<number, unknown>,
+            periodoData: periodoData as unknown as Record<number, unknown>,
+            toothNotes,
+            treatments: treatments as unknown as OdontogramSnapshot['treatments'],
+            discountActive,
+            total,
+        };
+        const updatedHistory = [...odontogramHistory, snapshot];
+        setOdontogramHistory(updatedHistory);
+
         // Generate history snapshot PDF BEFORE clearing
         generateHistoryPDF();
 
         const record = await loadPatientRecord(patientId);
-        const nowIso = new Date().toISOString();
-        const today = nowIso.split('T')[0];
         const newItems = treatments.map(t => ({
             id: `odo-${t.id}-${Date.now()}`,
             name: t.name,
@@ -201,6 +222,7 @@ export const HybridChart: React.FC<{ patientId?: string }> = ({ patientId }) => 
                 notes: record.treatmentPlan?.notes ?? '',
                 updatedAt: nowIso,
             },
+            odontogramHistory: updatedHistory,
         });
         // Clear entire chart for new consultation
         setSurfaces(Object.fromEntries(allTeeth.map(n => [n, defaultSurfaces()])));
@@ -324,19 +346,35 @@ export const HybridChart: React.FC<{ patientId?: string }> = ({ patientId }) => 
     };
 
     // ── History snapshot PDF (odontogram + perio + notes) ───────────────────
-    const generateHistoryPDF = () => {
+    const generateHistoryPDF = (snap?: OdontogramSnapshot) => {
         const patient = clinicProfile?.patients?.find(p => p.id === patientId);
-        const today = new Date().toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' });
-        const { clinicName, primary, logoHtml, doctorLine, phone, email, footer } = buildClinicHeader(today);
+        const snapDate = snap
+            ? new Date(snap.createdAt).toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' })
+            : new Date().toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' });
+        const { clinicName, primary, logoHtml, doctorLine, phone, email, footer } = buildClinicHeader(snapDate);
+
+        // Use snapshot data or current state
+        const _surfaces = snap ? snap.surfaces as unknown as Record<number, ToothSurfaceMap> : surfaces;
+        const _periodoData = snap ? snap.periodoData as unknown as Record<number, PeriodoData> : periodoData;
+        const _toothNotes = snap ? snap.toothNotes : toothNotes;
+        const _treatments = snap ? snap.treatments as unknown as AppliedTreatment[] : treatments;
+        const _discountActive = snap ? snap.discountActive : discountActive;
+        const _subtotal = _treatments.reduce((s, t) => s + t.price, 0);
+        const _discountAmt = _discountActive ? _subtotal * 0.1 : 0;
+        const _total = _subtotal - _discountAmt;
+        const snapDoctorLine = snap?.doctorName
+            ? `<div>${snap.doctorName}</div>`
+            : doctorLine;
 
         // Odontogram findings (non-healthy surfaces)
         const SURFACE_LABELS: Record<string, string> = { vestibular: 'Vestibular', lingual: 'Lingual', mesial: 'Mesial', distal: 'Distal', oclusal: 'Oclusal' };
         const odontogramRows = allTeeth.map(n => {
-            const s = surfaces[n];
+            const s = _surfaces[n];
+            if (!s) return '';
             const findings = Object.entries(s)
                 .filter(([, cond]) => cond !== 'healthy')
                 .map(([surf, cond]) => `${SURFACE_LABELS[surf] ?? surf}: ${CONDITION_LABELS[cond as ToothCondition]}`);
-            const note = toothNotes[n] ?? '';
+            const note = _toothNotes[n] ?? '';
             if (findings.length === 0 && !note) return '';
             return `<tr>
                 <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;font-weight:700;color:#1e293b">${n}</td>
@@ -346,7 +384,7 @@ export const HybridChart: React.FC<{ patientId?: string }> = ({ patientId }) => 
         }).filter(Boolean).join('');
 
         // Treatment list
-        const txRows = treatments.map(t => `<tr>
+        const txRows = _treatments.map(t => `<tr>
             <td style="padding:7px 12px;border-bottom:1px solid #f0f0f0;font-weight:600">${t.name}</td>
             <td style="padding:7px 12px;border-bottom:1px solid #f0f0f0;color:#64748b;text-align:center">D${t.toothNumber} · ${t.surface}</td>
             <td style="padding:7px 12px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:${primary}">$${t.price.toLocaleString('es-MX')}</td>
@@ -354,7 +392,7 @@ export const HybridChart: React.FC<{ patientId?: string }> = ({ patientId }) => 
 
         // Perio summary (teeth with probing depth ≥ 4 or bleeding)
         const periRows = allTeeth.map(n => {
-            const pd = periodoData[n] as any;
+            const pd = _periodoData[n] as any;
             if (!pd || pd.absent) return '';
             const depths = [...(pd.probingDepth?.buccal ?? []), ...(pd.probingDepth?.lingual ?? [])];
             const maxDepth = depths.length ? Math.max(...depths) : 0;
@@ -388,12 +426,12 @@ export const HybridChart: React.FC<{ patientId?: string }> = ({ patientId }) => 
         <div style="text-align:right;margin-bottom:14px"><button onclick="window.print()" style="background:${primary};color:#fff;border:none;padding:8px 20px;border-radius:7px;font-weight:700;cursor:pointer">Imprimir / Guardar PDF</button></div>
         <div class="header">
             <div>${logoHtml}<div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:2px;margin-top:3px">Historial Odontológico</div></div>
-            <div class="clinic-contact"><div style="font-weight:700;color:#1e293b">${today}</div>${doctorLine}${phone ? `<div>${phone}</div>` : ''}${email ? `<div>${email}</div>` : ''}</div>
+            <div class="clinic-contact"><div style="font-weight:700;color:#1e293b">${snapDate}</div>${snapDoctorLine}${phone ? `<div>${phone}</div>` : ''}${email ? `<div>${email}</div>` : ''}</div>
         </div>
         <div class="patient-box">
             <div><div class="lbl">Paciente</div><div class="val">${patient ? `${patient.nombres} ${patient.apellidos}` : '—'}</div></div>
             <div><div class="lbl">Folio</div><div class="val">${patient?.folio ?? '—'}</div></div>
-            <div><div class="lbl">Fecha de registro</div><div class="val">${today}</div></div>
+            <div><div class="lbl">Fecha de registro</div><div class="val">${snapDate}</div></div>
         </div>
         ${odontogramRows ? `<div class="section"><div class="section-title">Hallazgos Odontograma</div>
         <table><thead><tr><th>Diente</th><th>Condición por superficie</th><th>Nota clínica</th></tr></thead>
@@ -401,7 +439,7 @@ export const HybridChart: React.FC<{ patientId?: string }> = ({ patientId }) => 
         ${txRows ? `<div class="section"><div class="section-title">Tratamientos Cotizados</div>
         <table><thead><tr><th>Tratamiento</th><th style="text-align:center">Localización</th><th style="text-align:right">Precio</th></tr></thead>
         <tbody>${txRows}</tbody></table>
-        <div style="text-align:right;margin-top:10px;font-size:14px;font-weight:700;color:${primary}">Total: $${(discountActive ? total : subtotal).toLocaleString('es-MX')}</div></div>` : ''}
+        <div style="text-align:right;margin-top:10px;font-size:14px;font-weight:700;color:${primary}">Total: $${_total.toLocaleString('es-MX')}</div></div>` : ''}
         ${periRows ? `<div class="section"><div class="section-title">Alertas Periodontales (PS ≥ 4 mm o sangrado)</div>
         <table><thead><tr><th>Diente</th><th style="text-align:center">Prof. sondeo máx.</th><th style="text-align:center">Sangrado</th></tr></thead>
         <tbody>${periRows}</tbody></table></div>` : ''}
@@ -410,6 +448,15 @@ export const HybridChart: React.FC<{ patientId?: string }> = ({ patientId }) => 
 
         const win = window.open('', '_blank', 'width=950,height=750');
         if (win) { win.document.write(html); win.document.close(); }
+    };
+
+    // ── Delete odontogram snapshot ───────────────────────────────────────────
+    const deleteSnapshot = async (snapId: string) => {
+        if (!patientId) return;
+        if (!window.confirm('¿Eliminar este registro del historial? Esta acción no se puede deshacer.')) return;
+        const updated = odontogramHistory.filter(s => s.id !== snapId);
+        setOdontogramHistory(updated);
+        await savePatientRecord(patientId, { odontogramHistory: updated });
     };
 
     // ── Quote calculations ───────────────────────────────────────────────────
@@ -456,8 +503,12 @@ export const HybridChart: React.FC<{ patientId?: string }> = ({ patientId }) => 
         </div>
     );
 
+    const fmtSnapDate = (iso: string) =>
+        new Date(iso).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
     return (
-        <div className="w-full flex gap-6 h-full min-h-[600px]">
+        <div className="w-full flex flex-col gap-5">
+        <div className="w-full flex gap-6 min-h-[600px]">
             {/* ── LEFT: Quote Panel ─────────────────────────────────────────── */}
             <div className="w-72 flex-shrink-0 rounded-2xl p-5 flex flex-col gap-4 overflow-y-auto quote-panel-gradient">
                 <div>
@@ -573,7 +624,7 @@ export const HybridChart: React.FC<{ patientId?: string }> = ({ patientId }) => 
                                     ? <CheckCircle2 className="w-3 h-3 text-emerald-400" />
                                     : null
                         )}
-                        <button type="button" onClick={generateHistoryPDF} className="p-2 text-clinical/30 hover:text-amber-400 transition-colors" title="Generar PDF historial (odontograma + perio + notas)">
+                        <button type="button" onClick={() => generateHistoryPDF()} className="p-2 text-clinical/30 hover:text-amber-400 transition-colors" title="Generar PDF historial (odontograma + perio + notas)">
                             <FileText className="w-4 h-4" />
                         </button>
                         <button type="button" onClick={reset} className="p-2 text-clinical/30 hover:text-red-400 transition-colors" title="Reiniciar todo">
@@ -720,6 +771,49 @@ export const HybridChart: React.FC<{ patientId?: string }> = ({ patientId }) => 
                     )}
                 </AnimatePresence>
             </div>
+        </div>
+
+        {/* ── Odontogram History ─────────────────────────────────────────── */}
+        {odontogramHistory.length > 0 && (
+            <div className="border border-white/10 rounded-2xl overflow-hidden">
+                <div className="flex items-center gap-3 px-5 py-3 bg-white/4 border-b border-white/8">
+                    <FileText className="w-4 h-4 text-amber-400" />
+                    <span className="text-xs font-bold text-white uppercase tracking-widest">Historial Odontológico</span>
+                    <span className="ml-auto text-[10px] text-clinical/40">{odontogramHistory.length} registro{odontogramHistory.length > 1 ? 's' : ''}</span>
+                </div>
+                <div className="divide-y divide-white/5">
+                    {[...odontogramHistory].reverse().map(snap => (
+                        <div key={snap.id} className="flex items-center gap-4 px-5 py-3 hover:bg-white/3 transition-colors group">
+                            <div className="flex-1 min-w-0">
+                                <p className="text-xs font-bold text-white">{fmtSnapDate(snap.createdAt)}</p>
+                                <p className="text-[10px] text-clinical/50 mt-0.5">
+                                    {snap.doctorName ? `Dr. ${snap.doctorName} · ` : ''}
+                                    {snap.treatments.length} tratamiento{snap.treatments.length !== 1 ? 's' : ''}
+                                    {snap.total > 0 ? ` · $${snap.total.toLocaleString('es-MX')}` : ''}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => generateHistoryPDF(snap)}
+                                title="Ver PDF de este registro"
+                                className="flex items-center gap-1.5 text-[10px] font-bold text-electric border border-electric/25 rounded-lg px-3 py-1.5 hover:bg-electric/10 transition-colors opacity-0 group-hover:opacity-100"
+                            >
+                                <FileText className="w-3 h-3" /> PDF
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => deleteSnapshot(snap.id)}
+                                title="Eliminar registro"
+                                className="p-1.5 text-clinical/30 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                            >
+                                <X className="w-3.5 h-3.5" />
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        )}
+
         </div>
     );
 };
