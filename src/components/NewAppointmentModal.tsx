@@ -23,9 +23,15 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
     const { clinicProfile, appointments, setAppointments, patients } = useMarket();
     const doctors = (clinicProfile?.staff || []).filter(isDoctor);
 
+    // Helper: format a Date to "YYYY-MM-DD" for datetime-local inputs
+    const toDateStr = (d: Date) =>
+        `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`;
+
+    const baseDateStr = toDateStr(selectedDate ?? new Date());
+
     // Form State (Mocked for UI purposes)
     const [modalFormState, setModalFormState] = useState<Record<string, string>>({
-        datetime_start: initialTime ? `2024-03-01T${initialTime}` : '',
+        datetime_start: initialTime ? `${baseDateStr}T${initialTime}` : '',
     });
     const handleModalInput = (key: string, val: string) => setModalFormState(prev => ({ ...prev, [key]: val }));
     const [selectedDoctor, setSelectedDoctor] = useState(initialDoctorId || (doctors.length > 0 ? doctors[0].id : ''));
@@ -33,13 +39,15 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
     // Sync external props with internal state when modal opens
     useEffect(() => {
         if (isOpen) {
+            const dateStr = toDateStr(selectedDate ?? new Date());
             if (editAppointment) {
                 // Edit mode: pre-fill all fields from the existing appointment
                 setSelectedDoctor(editAppointment.doctorId);
                 setDurationMinutes(editAppointment.durationMinutes ?? 30);
+                const apptDate = editAppointment.date ?? dateStr;
                 setModalFormState(prev => ({
                     ...prev,
-                    datetime_start: `2024-03-01T${editAppointment.startTime}`,
+                    datetime_start: `${apptDate}T${editAppointment.startTime}`,
                     search: editAppointment.patientName,
                 }));
                 // Auto-link patient if found in the list
@@ -55,11 +63,11 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
                 if (procs.length) setSelectedTreatments(procs);
             } else {
                 if (initialDoctorId) setSelectedDoctor(initialDoctorId);
-                if (initialTime) setModalFormState(prev => ({ ...prev, datetime_start: `2024-03-01T${initialTime}` }));
+                if (initialTime) setModalFormState(prev => ({ ...prev, datetime_start: `${dateStr}T${initialTime}` }));
             }
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isOpen, editAppointment, initialDoctorId, initialTime]);
+    }, [isOpen, editAppointment, initialDoctorId, initialTime, selectedDate]);
 
     // Patient search state
     const [linkedPatientId, setLinkedPatientId] = useState<string | null>(null);
