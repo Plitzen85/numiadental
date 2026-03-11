@@ -113,7 +113,8 @@ export const Caja: React.FC = () => {
     // ── Load ─────────────────────────────────────────────────────────────────
     useEffect(() => {
         const todaysCaja = getTodayCaja();
-        const todayId = `caja-${new Date().toISOString().split('T')[0]}`;
+        const _d = new Date();
+        const todayId = `caja-${_d.getFullYear()}-${(_d.getMonth()+1).toString().padStart(2,'0')}-${_d.getDate().toString().padStart(2,'0')}`;
         if (todaysCaja?.status === 'open') {
             setCaja(todaysCaja);
             setHistorial(getAllCajas().filter(d => d.id !== todayId));
@@ -132,7 +133,8 @@ export const Caja: React.FC = () => {
         e.preventDefault();
         setSavingApertura(true);
         const opened = abrirCaja(Number(aperturaAmt) || 0, currentUserId, operadorName);
-        const todayId = `caja-${new Date().toISOString().split('T')[0]}`;
+        const _d2 = new Date();
+        const todayId = `caja-${_d2.getFullYear()}-${(_d2.getMonth()+1).toString().padStart(2,'0')}-${_d2.getDate().toString().padStart(2,'0')}`;
         setCaja(opened);
         setHistorial(getAllCajas().filter(d => d.id !== todayId));
         setSavingApertura(false);

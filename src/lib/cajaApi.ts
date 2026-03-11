@@ -55,12 +55,16 @@ const saveAll = (days: CajaDay[]) => {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const todayKey = () => {
-    const now = new Date();
-    return `caja-${now.toISOString().split('T')[0]}`;
+/** Devuelve la fecha local (no UTC) como YYYY-MM-DD.
+ *  toISOString() usa UTC y en México (UTC-6) da el día siguiente después de las 18h. */
+const localDateStr = (): string => {
+    const d = new Date();
+    return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`;
 };
 
-export const todayDate = () => new Date().toISOString().split('T')[0];
+const todayKey = () => `caja-${localDateStr()}`;
+
+export const todayDate = () => localDateStr();
 
 // ─── API ──────────────────────────────────────────────────────────────────────
 
