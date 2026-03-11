@@ -132,8 +132,11 @@ export const PatientFinanzas: React.FC<PatientFinanzasProps> = ({
         [payments]
     );
 
-    const totalPendiente = totalPlan - totalPagado;
-    const pctPagado = totalPlan > 0 ? Math.min(100, (totalPagado / totalPlan) * 100) : 0;
+    // Si se borraron ítems, los pagos excedentes no se vuelven "deuda negativa"
+    const totalPendiente = Math.max(0, totalPlan - totalPagado);
+    // Excedente: pagos que superan el valor actual del plan (ítems borrados)
+    const excedente = totalPagado > totalPlan ? totalPagado - totalPlan : 0;
+    const pctPagado = totalPlan > 0 ? Math.min(100, (totalPagado / totalPlan) * 100) : 100;
 
     // Items amount covered by payments
     const coveredItemIds = useMemo(() => {
@@ -325,6 +328,29 @@ export const PatientFinanzas: React.FC<PatientFinanzasProps> = ({
                                 className="h-full bg-gradient-to-r from-electric to-emerald-400 rounded-full"
                             />
                         </div>
+                    </div>
+                )}
+
+                {/* ── Aviso excedente (ítems borrados del plan) ────────────── */}
+                {excedente > 0 && (
+                    <div className="flex items-start gap-3 px-4 py-3 rounded-2xl border border-electric/25 bg-electric/5 text-sm">
+                        <AlertCircle className="w-4 h-4 text-electric shrink-0 mt-0.5" />
+                        <div className="flex-1">
+                            <p className="font-bold text-white text-xs uppercase tracking-wide mb-0.5">Pagos exceden el plan actual</p>
+                            <p className="text-clinical/60 text-xs">
+                                Los cobros registrados ({fmt(totalPagado)}) superan el valor del plan actual ({fmt(totalPlan)}).
+                                El excedente de <span className="text-electric font-bold">{fmt(excedente)}</span> puede registrarse como saldo a favor del paciente.
+                            </p>
+                        </div>
+                        {patientId && (
+                            <button
+                                type="button"
+                                onClick={() => { setSaldoTipo('abonar'); setSaldoAjuste(String(excedente)); setShowSaldoModal(true); }}
+                                className="shrink-0 text-[11px] font-bold text-electric border border-electric/30 rounded-lg px-2.5 py-1.5 hover:bg-electric/10 transition-colors"
+                            >
+                                Abonar saldo
+                            </button>
+                        )}
                     </div>
                 )}
 
