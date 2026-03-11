@@ -279,6 +279,80 @@ export const HybridChart: React.FC<{ patientId?: string }> = ({ patientId }) => 
             <td style="padding:8px 12px;text-align:right;color:${primary};font-weight:700">−$${discountAmt.toLocaleString('es-MX')}</td>
         </tr>` : '';
 
+        // ── Perio evaluation ─────────────────────────────────────────────────
+        let deepSites = 0, bleedingTeeth = 0, totalDepth = 0, totalSites = 0, maxGlobalDepth = 0;
+        const periAffected: Array<{ tooth: number; maxDepth: number; bleeding: boolean }> = [];
+        allTeeth.forEach(n => {
+            const pd = periodoData[n] as any;
+            if (!pd || pd.absent) return;
+            const depths = [...(pd.probingDepth?.buccal ?? []), ...(pd.probingDepth?.lingual ?? [])];
+            const max = depths.length ? Math.max(...depths) : 0;
+            const bleed = pd.bleeding?.buccal || pd.bleeding?.lingual;
+            depths.forEach(v => { totalDepth += v; totalSites++; if (v >= 4) deepSites++; });
+            if (max > maxGlobalDepth) maxGlobalDepth = max;
+            if (bleed) bleedingTeeth++;
+            if (max >= 4 || bleed) periAffected.push({ tooth: n, maxDepth: max, bleeding: bleed });
+        });
+        const avgDepth = totalSites > 0 ? (totalDepth / totalSites).toFixed(1) : '0.0';
+
+        // Clinical interpretation
+        let periInterpretation = '';
+        let periColor = '#22c55e';
+        if (maxGlobalDepth === 0 && bleedingTeeth === 0) {
+            periInterpretation = 'Sin datos periodontales registrados.';
+            periColor = '#94a3b8';
+        } else if (maxGlobalDepth <= 3 && bleedingTeeth === 0) {
+            periInterpretation = 'Periodonto dentro de parámetros normales. Sin signos de enfermedad periodontal activa.';
+            periColor = '#22c55e';
+        } else if (maxGlobalDepth <= 3 && bleedingTeeth > 0) {
+            periInterpretation = `Gingivitis leve — sangrado presente en ${bleedingTeeth} diente${bleedingTeeth > 1 ? 's' : ''}. Profundidades dentro de rango normal. Se recomienda refuerzo de higiene oral.`;
+            periColor = '#f59e0b';
+        } else if (maxGlobalDepth <= 5) {
+            periInterpretation = `Periodontitis estadio inicial — bolsas de 4–5 mm detectadas en ${deepSites} sitio${deepSites > 1 ? 's' : ''}. Se recomienda raspado y alisado radicular.`;
+            periColor = '#f97316';
+        } else {
+            periInterpretation = `Periodontitis estadio avanzado — profundidades de sondeo ≥ 6 mm. Requiere evaluación periodontal especializada y tratamiento inmediato.`;
+            periColor = '#ef4444';
+        }
+
+        const periAffectedRows = periAffected.map(({ tooth, maxDepth, bleeding }) => `
+            <tr>
+                <td style="padding:6px 10px;border-bottom:1px solid #f0f0f0;font-weight:700;font-size:12px">${tooth}</td>
+                <td style="padding:6px 10px;border-bottom:1px solid #f0f0f0;text-align:center;font-size:12px;color:${maxDepth >= 6 ? '#ef4444' : maxDepth >= 4 ? '#f97316' : '#1e293b'};font-weight:${maxDepth >= 4 ? '700' : '400'}">${maxDepth} mm</td>
+                <td style="padding:6px 10px;border-bottom:1px solid #f0f0f0;text-align:center;font-size:12px;color:${bleeding ? '#ef4444' : '#94a3b8'}">${bleeding ? '● Sí' : '○ No'}</td>
+            </tr>`).join('');
+
+        const periSection = `
+        <div style="margin-top:28px;page-break-inside:avoid">
+            <div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:2px;color:${primary};margin-bottom:10px;padding-bottom:4px;border-bottom:2px solid ${primary}">Evaluación Periodontal</div>
+            <div style="display:flex;gap:12px;margin-bottom:14px">
+                <div style="flex:1;background:#f8fafc;border-radius:10px;padding:10px 14px;text-align:center">
+                    <div style="font-size:22px;font-weight:900;color:${primary}">${avgDepth}</div>
+                    <div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;margin-top:2px">Prom. sondaje (mm)</div>
+                </div>
+                <div style="flex:1;background:#fff5f5;border-radius:10px;padding:10px 14px;text-align:center">
+                    <div style="font-size:22px;font-weight:900;color:#ef4444">${deepSites}</div>
+                    <div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;margin-top:2px">Sitios ≥ 4 mm</div>
+                </div>
+                <div style="flex:1;background:#fff8f0;border-radius:10px;padding:10px 14px;text-align:center">
+                    <div style="font-size:22px;font-weight:900;color:#f97316">${bleedingTeeth}</div>
+                    <div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;margin-top:2px">Dientes c/ sangrado</div>
+                </div>
+            </div>
+            ${periAffected.length > 0 ? `
+            <table style="width:100%;border-collapse:collapse;margin-bottom:10px;font-size:12px">
+                <thead><tr style="background:${primary};color:#fff">
+                    <th style="padding:7px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px">Diente</th>
+                    <th style="padding:7px 10px;text-align:center;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px">Prof. sondeo máx.</th>
+                    <th style="padding:7px 10px;text-align:center;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px">Sangrado</th>
+                </tr></thead>
+                <tbody>${periAffectedRows}</tbody>
+            </table>` : ''}
+            <div style="background:${periColor}15;border-left:4px solid ${periColor};border-radius:4px;padding:10px 14px;font-size:11px;color:#1e293b;line-height:1.6">
+                <span style="font-weight:700;color:${periColor}">Interpretación: </span>${periInterpretation}
+            </div>
+        </div>`;
+
         const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
         <title>Presupuesto — ${clinicName}</title>
         <style>
@@ -338,6 +412,7 @@ export const HybridChart: React.FC<{ patientId?: string }> = ({ patientId }) => 
             <div class="total-line">Subtotal: $${subtotal.toLocaleString('es-MX')}</div>
             <div class="total-main">Total: $${total.toLocaleString('es-MX')}</div>
         </div>
+        ${periSection}
         <div class="footer">${footer}<br>Este documento es una propuesta de tratamiento. Los precios pueden variar.</div>
         </body></html>`;
 
