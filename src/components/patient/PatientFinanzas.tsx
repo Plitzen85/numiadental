@@ -132,15 +132,21 @@ export const PatientFinanzas: React.FC<PatientFinanzasProps> = ({
         [activeItems]
     );
 
+    // "Pagado" = value of treatment items with status 'paid' (matches Pipeline's "Cobrado")
     const totalPagado = useMemo(
+        () => activeItems.filter(i => i.status === 'paid').reduce((sum, i) => sum + itemFinalPrice(i), 0),
+        [activeItems]
+    );
+
+    // Actual cash received (sum of payment amounts) — separate from treatment-item tracking
+    const totalRecibido = useMemo(
         () => payments.reduce((sum, p) => sum + p.monto, 0),
         [payments]
     );
 
-    // Si se borraron ítems, los pagos excedentes no se vuelven "deuda negativa"
     const totalPendiente = Math.max(0, totalPlan - totalPagado);
-    // Excedente: pagos que superan el valor actual del plan (ítems borrados)
-    const excedente = totalPagado > totalPlan ? totalPagado - totalPlan : 0;
+    // Excedente: money received exceeds paid items value
+    const excedente = totalRecibido > totalPlan ? totalRecibido - totalPlan : 0;
     const pctPagado = totalPlan > 0 ? Math.min(100, (totalPagado / totalPlan) * 100) : 100;
 
     // Items amount covered by payments
@@ -277,9 +283,10 @@ export const PatientFinanzas: React.FC<PatientFinanzasProps> = ({
                 {/* ── Balance Cards ───────────────────────────────────────── */}
                 <div className="grid grid-cols-3 gap-3">
                     {[
-                        { label: 'Total del Plan', value: totalPlan, icon: <TrendingUp className="w-5 h-5" />, color: 'text-electric border-electric/30 bg-electric/5' },
-                        { label: 'Pagado', value: totalPagado, icon: <CheckCircle2 className="w-5 h-5" />, color: 'text-emerald-400 border-emerald-500/30 bg-emerald-500/5' },
-                        { label: 'Pendiente', value: totalPendiente, icon: <Clock className="w-5 h-5" />, color: totalPendiente > 0 ? 'text-amber-400 border-amber-500/30 bg-amber-500/5' : 'text-clinical/40 border-white/10 bg-white/3' },
+                        { label: 'Total del Plan', value: totalPlan, icon: <TrendingUp className="w-5 h-5" />, color: 'text-electric border-electric/30 bg-electric/5', sub: null },
+                        { label: 'Pagado', value: totalPagado, icon: <CheckCircle2 className="w-5 h-5" />, color: 'text-emerald-400 border-emerald-500/30 bg-emerald-500/5',
+                            sub: totalRecibido !== totalPagado ? `Recibido: ${fmt(totalRecibido)}` : null },
+                        { label: 'Pendiente', value: totalPendiente, icon: <Clock className="w-5 h-5" />, color: totalPendiente > 0 ? 'text-amber-400 border-amber-500/30 bg-amber-500/5' : 'text-clinical/40 border-white/10 bg-white/3', sub: null },
                     ].map(card => (
                         <div key={card.label} className={`border rounded-2xl p-4 ${card.color}`}>
                             <div className="flex items-center gap-2 mb-1 opacity-70">
@@ -287,6 +294,7 @@ export const PatientFinanzas: React.FC<PatientFinanzasProps> = ({
                                 <span className="text-xs font-bold uppercase tracking-wide">{card.label}</span>
                             </div>
                             <div className="font-syne text-xl font-bold">{fmt(card.value)}</div>
+                            {card.sub && <div className="text-[10px] opacity-60 mt-0.5">{card.sub}</div>}
                         </div>
                     ))}
                 </div>
@@ -346,7 +354,7 @@ export const PatientFinanzas: React.FC<PatientFinanzasProps> = ({
                         <div className="flex-1">
                             <p className="font-bold text-white text-xs uppercase tracking-wide mb-0.5">Pagos exceden el plan actual</p>
                             <p className="text-clinical/60 text-xs">
-                                Los cobros registrados ({fmt(totalPagado)}) superan el valor del plan actual ({fmt(totalPlan)}).
+                                Los cobros registrados ({fmt(totalRecibido)}) superan el valor del plan actual ({fmt(totalPlan)}).
                                 El excedente de <span className="text-electric font-bold">{fmt(excedente)}</span> puede registrarse como saldo a favor del paciente.
                             </p>
                         </div>
