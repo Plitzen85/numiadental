@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { useMarket, ClinicProfile, StaffMember, ModulePermissions } from '../context/MarketContext';
 import { useAuth } from '../context/AuthContext';
-import { supabase, CLINIC_ID } from '../lib/supabase';
+import { savePatientRecord } from '../lib/supabase';
 import {
     Users, Plus, Trash2, X, Key, RefreshCw, Save,
     AlertCircle, Building2, UserCircle, MapPin, Upload,
@@ -656,13 +656,25 @@ export const Settings: React.FC = () => {
                         <button
                             type="button"
                             onClick={async () => {
-                                if (!confirm('¿Seguro? Esto borrará TODOS los expedientes clínicos (visitas, planes de tratamiento, pagos) de Supabase. No se puede deshacer.')) return;
-                                const { error } = await supabase
-                                    .from('patient_records')
-                                    .delete()
-                                    .eq('clinic_id', CLINIC_ID);
-                                if (error) { alert(`Error: ${error.message}`); return; }
-                                alert('Expedientes clínicos eliminados. La página se recargará.');
+                                if (!confirm('¿Seguro? Esto borrará TODOS los expedientes clínicos (visitas, planes de tratamiento, pagos) de todos los pacientes. No se puede deshacer.')) return;
+                                const patients = clinicProfile?.patients ?? [];
+                                if (patients.length === 0) { alert('No hay pacientes registrados.'); return; }
+                                const emptyRecord = {
+                                    notes: [],
+                                    files: [],
+                                    visits: [],
+                                    treatmentPlan: { items: [], notes: '', updatedAt: '' },
+                                    payments: [],
+                                    medicalHistory: { alergias: false, diabetes: false, hipertension: false, cardiopatia: false, embarazo: false, medicamentos: '', notas: '' },
+                                    chartData: { surfaces: {}, treatments: [], periodoData: {}, toothNotes: {} },
+                                };
+                                let failed = 0;
+                                for (const p of patients) {
+                                    const result = await savePatientRecord(p.id, emptyRecord as any);
+                                    if (!result.success) failed++;
+                                }
+                                if (failed > 0) { alert(`${failed} expediente(s) no pudieron resetearse. Revisa consola.`); return; }
+                                alert(`${patients.length} expedientes reseteados. La página se recargará.`);
                                 window.location.reload();
                             }}
                             className="px-4 py-2.5 rounded-xl bg-red-500/15 border border-red-500/40 text-red-400 hover:bg-red-500/25 transition-colors font-bold text-sm"
