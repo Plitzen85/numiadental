@@ -211,12 +211,16 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
         }
 
         const computedSillonId = (doctors.findIndex(d => d.id === selectedDoctor) % 3) + 1;
+        const apptDateStr = eventDate
+            ? `${eventDate.getFullYear()}-${(eventDate.getMonth() + 1).toString().padStart(2, '0')}-${eventDate.getDate().toString().padStart(2, '0')}`
+            : undefined;
         const newAppt = {
             id: Date.now().toString(),
             patientName,
             procedure,
             doctorId: selectedDoctor,
             startTime: timeString,
+            date: apptDateStr,
             durationMinutes: duration,
             status: 'scheduled' as const,
             googleCalendarEventId: gcalEventId,

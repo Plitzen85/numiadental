@@ -4,6 +4,7 @@ export interface AppointmentType {
     procedure: string;
     doctorId: string;
     startTime: string; // HH:mm format
+    date?: string;               // YYYY-MM-DD — date of the appointment
     durationMinutes: number;
     status: 'scheduled' | 'confirmed' | 'arrived' | 'in_chair' | 'completed' | 'billed' | 'cancelled';
     paymentStatus?: 'pending' | 'paid';

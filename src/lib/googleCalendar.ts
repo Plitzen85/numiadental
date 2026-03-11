@@ -185,9 +185,10 @@ export function connectDoctor(
 /**
  * Silent re-connection — no popup.
  * GIS will reuse the existing Google session if the user previously consented.
+ * Pass `hint` (doctor's Google email) so GIS skips the account-chooser entirely.
  * Resolves with the new token or null if silent auth is not possible.
  */
-export function silentReconnect(doctorId: string): Promise<GCalToken | null> {
+export function silentReconnect(doctorId: string, hint?: string): Promise<GCalToken | null> {
     const clientId = getClientId();
     if (!clientId) return Promise.resolve(null);
 
@@ -195,10 +196,15 @@ export function silentReconnect(doctorId: string): Promise<GCalToken | null> {
     const google = (window as any).google;
     if (!google?.accounts?.oauth2) return Promise.resolve(null);
 
+    // Prefer the email we stored when the user last authorized (most reliable hint)
+    const emailHint = hint ?? _tokens[doctorId]?.email ?? undefined;
+
     return new Promise(resolve => {
         const client = google.accounts.oauth2.initTokenClient({
             client_id: clientId,
             scope: GCAL_SCOPE,
+            // login_hint pre-selects the Google account — no account-chooser popup
+            ...(emailHint ? { login_hint: emailHint } : {}),
             callback: (resp: { access_token?: string; error?: string; expires_in?: number }) => {
                 if (resp.error || !resp.access_token) {
                     resolve(null);
@@ -209,7 +215,7 @@ export function silentReconnect(doctorId: string): Promise<GCalToken | null> {
             },
             error_callback: () => resolve(null),
         });
-        // Empty prompt = silent, no popup; fails gracefully if not possible
+        // prompt: '' = silent/no interaction; login_hint removes account ambiguity
         client.requestAccessToken({ prompt: '' });
     });
 }
@@ -395,12 +401,15 @@ export function gcalEventToAppointment(event: GCalEvent, doctorId: string): Appo
     const desc = (event.description ?? '').toLowerCase();
     const isMinorPatient = desc.includes('menor de edad') || desc.includes('es menor') || desc.includes('acompañante') || desc.includes('tutor');
 
+    const dateStr = `${start.getFullYear()}-${(start.getMonth() + 1).toString().padStart(2, '0')}-${start.getDate().toString().padStart(2, '0')}`;
+
     return {
         id: `gcal-${event.id}`,
         patientName: event.summary ?? 'Evento de Google Calendar',
         procedure: 'Google Calendar',
         doctorId,
         startTime: timeStr,
+        date: dateStr,
         durationMinutes: Math.max(15, durationMinutes),
         status: 'confirmed',
         googleCalendarEventId: event.id,

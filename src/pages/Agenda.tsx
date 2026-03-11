@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Calendar as CalendarIcon, UserPlus, Sparkles, RefreshCcw, CheckCircle2, Bot, Wifi, DoorOpen, Armchair, CreditCard, Flag, LayoutGrid, Stethoscope, MessageCircle } from 'lucide-react';
+import { Calendar as CalendarIcon, UserPlus, Sparkles, RefreshCcw, CheckCircle2, Bot, Wifi, DoorOpen, Armchair, CreditCard, Flag, LayoutGrid, Stethoscope, MessageCircle, ChevronLeft, ChevronRight, Cake } from 'lucide-react';
 import { useMarket, isDoctor } from '../context/MarketContext';
 import { AppointmentType, getActiveUnitsAtTime, parseTimeToMinutes } from '../lib/agendaLogic';
 import {
@@ -67,8 +67,29 @@ export const Agenda: React.FC = () => {
 
     const today = new Date();
     const [selectedDate, setSelectedDate] = useState<number>(today.getDate());
-    const [currentMonth] = useState<number>(today.getMonth());
-    const [currentYear] = useState<number>(today.getFullYear());
+    const [currentMonth, setCurrentMonth] = useState<number>(today.getMonth());
+    const [currentYear, setCurrentYear] = useState<number>(today.getFullYear());
+
+    // Derived: YYYY-MM-DD string for the selected date
+    const selectedDateStr = `${currentYear}-${(currentMonth + 1).toString().padStart(2, '0')}-${selectedDate.toString().padStart(2, '0')}`;
+
+    // Navigate months
+    const goPrevMonth = () => {
+        if (currentMonth === 0) { setCurrentMonth(11); setCurrentYear(y => y - 1); }
+        else setCurrentMonth(m => m - 1);
+        setSelectedDate(1);
+    };
+    const goNextMonth = () => {
+        if (currentMonth === 11) { setCurrentMonth(0); setCurrentYear(y => y + 1); }
+        else setCurrentMonth(m => m + 1);
+        setSelectedDate(1);
+    };
+
+    // Birthday patients on selected date
+    const birthdayPatients = useMemo(() => {
+        const mmdd = selectedDateStr.slice(5); // MM-DD
+        return patients.filter(p => p.fechaNacimiento?.slice(5) === mmdd);
+    }, [patients, selectedDateStr]);
 
     const START_HOUR = 8;
     const END_HOUR = 20;
@@ -170,6 +191,12 @@ export const Agenda: React.FC = () => {
         );
         return [...appointments, ...newGcalEvents];
     }, [appointments, gcalEvents]);
+
+    // Filtered to selected date (appointments without a date still show for backwards compat)
+    const dayAppointments = useMemo<AppointmentType[]>(
+        () => allAppointments.filter(a => !a.date || a.date === selectedDateStr),
+        [allAppointments, selectedDateStr]
+    );
 
     // -----------------------------------------------------------------------
     // Handlers
@@ -453,23 +480,45 @@ export const Agenda: React.FC = () => {
                     <>
                         {/* Calendar Mini-view & AI Tool */}
                         <div className="md:col-span-1 space-y-4">
-                            <div className="glass-panel p-6 rounded-2xl">
-                                <h3 className="text-sm font-bold text-white mb-4 uppercase">{months[currentMonth]} {currentYear}</h3>
-                                <div className="grid grid-cols-7 gap-1 text-center text-[10px] text-clinical/50 mb-2">
+                            <div className="glass-panel p-4 rounded-2xl">
+                                {/* Month navigation */}
+                                <div className="flex items-center justify-between mb-3">
+                                    <button type="button" title="Mes anterior" onClick={goPrevMonth} className="p-1 rounded hover:bg-white/10 text-clinical/60 hover:text-white transition-colors">
+                                        <ChevronLeft className="w-4 h-4" />
+                                    </button>
+                                    <h3 className="text-sm font-bold text-white uppercase">{months[currentMonth]} {currentYear}</h3>
+                                    <button type="button" title="Mes siguiente" onClick={goNextMonth} className="p-1 rounded hover:bg-white/10 text-clinical/60 hover:text-white transition-colors">
+                                        <ChevronRight className="w-4 h-4" />
+                                    </button>
+                                </div>
+                                <div className="grid grid-cols-7 gap-0.5 text-center text-[10px] text-clinical/50 mb-1">
                                     <div>Do</div><div>Lu</div><div>Ma</div><div>Mi</div><div>Ju</div><div>Vi</div><div>Sa</div>
                                 </div>
-                                <div className="grid grid-cols-7 gap-1 text-center text-sm font-bold">
-                                    {Array.from({ length: 31 }).map((_, i) => (
-                                        <button
-                                            key={i}
-                                            onClick={() => {
-                                                setSelectedDate(i + 1);
-                                                setIsOptimized(false);
-                                            }}
-                                            className={`p-2 rounded-lg hover:bg-white/10 transition-colors ${i + 1 === selectedDate ? 'bg-electric text-cobalt' : 'text-clinical/80'} ${i + 1 === today.getDate() && i + 1 !== selectedDate ? 'border border-electric/30' : ''}`}>
-                                            {i + 1}
-                                        </button>
+                                <div className="grid grid-cols-7 gap-0.5 text-center text-xs font-bold">
+                                    {/* Day-of-week offset for month start */}
+                                    {Array.from({ length: new Date(currentYear, currentMonth, 1).getDay() }).map((_, i) => (
+                                        <div key={`empty-${i}`} />
                                     ))}
+                                    {Array.from({ length: new Date(currentYear, currentMonth + 1, 0).getDate() }).map((_, i) => {
+                                        const day = i + 1;
+                                        const isToday = day === today.getDate() && currentMonth === today.getMonth() && currentYear === today.getFullYear();
+                                        const isSelected = day === selectedDate;
+                                        // Count appointments for this day
+                                        const dayStr = `${currentYear}-${(currentMonth + 1).toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+                                        const hasCitas = allAppointments.some(a => a.date === dayStr && a.status !== 'cancelled');
+                                        return (
+                                            <button
+                                                key={day}
+                                                onClick={() => { setSelectedDate(day); setIsOptimized(false); }}
+                                                className={`relative p-1.5 rounded-lg hover:bg-white/10 transition-colors ${isSelected ? 'bg-electric text-cobalt' : 'text-clinical/80'} ${isToday && !isSelected ? 'border border-electric/50' : ''}`}
+                                            >
+                                                {day}
+                                                {hasCitas && !isSelected && (
+                                                    <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-electric/70" />
+                                                )}
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             </div>
 
@@ -518,6 +567,66 @@ export const Agenda: React.FC = () => {
                                         <p className="text-sm text-premium/80">Analizando historiales clínicos, tiempos de sillón y preferencias de doctores.</p>
                                     </div>
                                 )}
+
+                                {/* Birthday alert */}
+                                {birthdayPatients.length > 0 && (
+                                    <div className="mb-4 flex items-center gap-3 px-4 py-2.5 rounded-xl bg-pink-500/10 border border-pink-500/25 text-pink-200 text-sm">
+                                        <Cake className="w-4 h-4 shrink-0 text-pink-400" />
+                                        <span>
+                                            <span className="font-bold">¡Cumpleaños hoy!</span>{' '}
+                                            {birthdayPatients.map(p => `${p.nombres} ${p.apellidos}`).join(', ')}
+                                        </span>
+                                    </div>
+                                )}
+
+                                {/* Week strip */}
+                                {(() => {
+                                    const selDateObj = new Date(currentYear, currentMonth, selectedDate);
+                                    const dayOfWeek = selDateObj.getDay(); // 0=Sun
+                                    const weekDays = Array.from({ length: 7 }, (_, i) => {
+                                        const d = new Date(selDateObj);
+                                        d.setDate(selDateObj.getDate() - dayOfWeek + i);
+                                        return d;
+                                    });
+                                    const dayNames = ['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa'];
+                                    return (
+                                        <div className="flex items-center gap-1 mb-4">
+                                            {weekDays.map((d, i) => {
+                                                const dStr = `${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')}`;
+                                                const isSelected = d.getDate() === selectedDate && d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+                                                const isToday = d.toDateString() === today.toDateString();
+                                                const citaCount = allAppointments.filter(a => a.date === dStr && a.status !== 'cancelled').length;
+                                                const hasBday = patients.some(p => p.fechaNacimiento?.slice(5) === dStr.slice(5));
+                                                return (
+                                                    <button
+                                                        key={i}
+                                                        type="button"
+                                                        title={dStr}
+                                                        onClick={() => {
+                                                            // Navigate to this day (possibly different month)
+                                                            if (d.getMonth() !== currentMonth || d.getFullYear() !== currentYear) {
+                                                                setCurrentMonth(d.getMonth());
+                                                                setCurrentYear(d.getFullYear());
+                                                            }
+                                                            setSelectedDate(d.getDate());
+                                                            setIsOptimized(false);
+                                                        }}
+                                                        className={`flex-1 flex flex-col items-center py-1.5 rounded-lg transition-colors relative ${isSelected ? 'bg-electric text-cobalt' : isToday ? 'border border-electric/40 text-white hover:bg-white/10' : 'text-clinical/60 hover:bg-white/5'}`}
+                                                    >
+                                                        <span className="text-[10px] font-bold uppercase">{dayNames[i]}</span>
+                                                        <span className="text-sm font-bold">{d.getDate()}</span>
+                                                        {citaCount > 0 && (
+                                                            <span className={`text-[9px] font-bold mt-0.5 ${isSelected ? 'text-cobalt/70' : 'text-electric/70'}`}>{citaCount}</span>
+                                                        )}
+                                                        {hasBday && (
+                                                            <span className="absolute top-0.5 right-1 w-1.5 h-1.5 rounded-full bg-pink-400" />
+                                                        )}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    );
+                                })()}
 
                                 <div className="flex justify-between items-end mb-6 border-b border-white/10 pb-4">
                                     <div>
@@ -589,7 +698,7 @@ export const Agenda: React.FC = () => {
                                                         <span className="font-syne font-bold text-white text-sm">Sillón {n}</span>
                                                     </div>
                                                     <div className="text-[10px] text-clinical/40 mt-0.5">
-                                                        {allAppointments.filter(a => (a.sillonId ?? ((doctors.findIndex(d=>d.id===a.doctorId)%3)+1)) === n && a.status !== 'cancelled').length} citas
+                                                        {dayAppointments.filter(a => (a.sillonId ?? ((doctors.findIndex(d=>d.id===a.doctorId)%3)+1)) === n && a.status !== 'cancelled').length} citas
                                                     </div>
                                                     <div className={`absolute bottom-0 left-0 w-full h-1 ${n===1?'bg-cyan-500':n===2?'bg-amber-500':'bg-purple-500'}`}></div>
                                                 </div>
@@ -599,7 +708,7 @@ export const Agenda: React.FC = () => {
                                         {/* Grid Body (Time Slots) */}
                                         <div className="relative">
                                             {timeSlots.map((time) => {
-                                                const activeUnits = getActiveUnitsAtTime(allAppointments, time);
+                                                const activeUnits = getActiveUnitsAtTime(dayAppointments, time);
                                                 const isMaxCapacity = activeUnits >= 3;
                                                 const columns = calView === 'doctor' ? doctors : [1,2,3];
 
@@ -646,7 +755,7 @@ export const Agenda: React.FC = () => {
                                             })}
 
                                             {/* APPOINTMENT OVERLAYS */}
-                                            {allAppointments.map((appt: any) => {
+                                            {dayAppointments.map((appt: any) => {
                                                 const doctorIndex = doctors.findIndex(d => d.id === appt.doctorId);
                                                 const sillonId: number = appt.sillonId ?? ((doctorIndex >= 0 ? doctorIndex : 0) % 3) + 1;
                                                 const colIndex = calView === 'doctor' ? doctorIndex : (sillonId - 1);
