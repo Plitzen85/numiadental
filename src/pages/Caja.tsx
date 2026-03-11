@@ -218,6 +218,20 @@ export const Caja: React.FC = () => {
     );
     const visibleMovs = showAllMovs ? sortedMovs : sortedMovs.slice(0, 6);
 
+    // Desglose por paciente: agrupa ingresos que tienen patientName
+    const pacienteDesglose = useMemo(() => {
+        if (!caja) return [];
+        const map = new Map<string, { monto: number; count: number }>();
+        for (const mov of caja.movimientos) {
+            if (mov.tipo !== 'ingreso' || !mov.patientName) continue;
+            const prev = map.get(mov.patientName) ?? { monto: 0, count: 0 };
+            map.set(mov.patientName, { monto: prev.monto + mov.monto, count: prev.count + 1 });
+        }
+        return [...map.entries()]
+            .map(([name, v]) => ({ name, ...v }))
+            .sort((a, b) => b.monto - a.monto);
+    }, [caja]);
+
     // ─────────────────────────────────────────────────────────────────────────
 
     return (
@@ -328,6 +342,33 @@ export const Caja: React.FC = () => {
                             ))}
                         </div>
                     </div>
+
+                    {/* ── Desglose por paciente ───────────────────────────── */}
+                    {pacienteDesglose.length > 0 && (
+                        <div className="bg-white/3 border border-white/10 rounded-2xl p-5">
+                            <h3 className="text-xs font-bold text-clinical/40 uppercase tracking-wide mb-3 flex items-center gap-2">
+                                <Receipt className="w-3.5 h-3.5" /> Cobros del día por paciente
+                            </h3>
+                            <div className="space-y-2">
+                                {pacienteDesglose.map(({ name, monto, count }) => (
+                                    <div key={name} className="flex items-center justify-between text-sm">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-6 h-6 rounded-full bg-electric/10 border border-electric/20 flex items-center justify-center text-electric text-[10px] font-bold flex-shrink-0">
+                                                {name.charAt(0).toUpperCase()}
+                                            </div>
+                                            <span className="text-white/80 truncate max-w-[180px]">{name}</span>
+                                            <span className="text-clinical/35 text-xs">{count} {count === 1 ? 'cobro' : 'cobros'}</span>
+                                        </div>
+                                        <span className="text-emerald-400 font-bold flex-shrink-0">{fmt(monto)}</span>
+                                    </div>
+                                ))}
+                                <div className="border-t border-white/10 pt-2 flex justify-between text-xs font-bold">
+                                    <span className="text-clinical/40">Total pacientes</span>
+                                    <span className="text-electric">{fmt(pacienteDesglose.reduce((s, p) => s + p.monto, 0))}</span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {/* ── Efectivo esperado ───────────────────────────────── */}
                     <div className="flex items-center justify-between bg-amber-500/5 border border-amber-500/20 rounded-2xl px-5 py-4">

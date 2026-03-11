@@ -3,7 +3,7 @@ import {
     DollarSign, Plus, CreditCard, Banknote, ArrowDownToLine,
     Bitcoin, CheckCircle2, Clock, ChevronDown, ChevronUp,
     Receipt, Wallet, TrendingUp, AlertCircle, X, Loader2,
-    Lock, ChevronRight, FileText, Printer,
+    Lock, ChevronRight, FileText, Printer, Gift, Minus,
 } from 'lucide-react';
 import { printPaymentReceipt } from '../../utils/patientPrint';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -67,13 +67,16 @@ const genReceipt = () => `REC-${Date.now().toString(36).toUpperCase()}`;
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export const PatientFinanzas: React.FC<PatientFinanzasProps> = ({
+    patientId,
     patientName,
     treatmentPlan,
     payments,
     onSavePayment,
 }) => {
-    const { currentUserId, clinicProfile } = useMarket();
+    const { currentUserId, clinicProfile, patients, setPatients } = useMarket();
     const currentStaff = clinicProfile?.staff?.find(s => s.id === currentUserId);
+    const currentPatient = patients.find(p => p.id === patientId);
+    const saldo = currentPatient?.saldo ?? 0;
 
     // ── Modal state ──────────────────────────────────────────────────────────
     const [showModal, setShowModal] = useState(false);
@@ -91,6 +94,27 @@ export const PatientFinanzas: React.FC<PatientFinanzasProps> = ({
     // ── Expand history ───────────────────────────────────────────────────────
     const [showAll, setShowAll] = useState(false);
     const [selectedPayment, setSelectedPayment] = useState<PatientPayment | null>(null);
+
+    // ── Saldo / crédito ──────────────────────────────────────────────────────
+    const [showSaldoModal, setShowSaldoModal] = useState(false);
+    const [saldoAjuste, setSaldoAjuste] = useState('');
+    const [saldoTipo, setSaldoTipo] = useState<'abonar' | 'cargo'>('abonar');
+    const [aplicarSaldo, setAplicarSaldo] = useState(false);
+
+    const updateSaldo = (nuevoSaldo: number) => {
+        if (!patientId) return;
+        setPatients(prev => prev.map(p => p.id === patientId ? { ...p, saldo: nuevoSaldo } : p));
+    };
+
+    const handleSaldoAjuste = (e: React.FormEvent) => {
+        e.preventDefault();
+        const amt = Number(saldoAjuste);
+        if (!amt || amt <= 0) return;
+        const delta = saldoTipo === 'abonar' ? amt : -amt;
+        updateSaldo(saldo + delta);
+        setSaldoAjuste('');
+        setShowSaldoModal(false);
+    };
 
     // ── Computed balances ────────────────────────────────────────────────────
     const activeItems = useMemo(
@@ -153,7 +177,9 @@ export const PatientFinanzas: React.FC<PatientFinanzasProps> = ({
         const isCripto = metodo === 'cripto';
         const rawMonto = Number(monto);
         const feeRate = isCripto && !cryptoType.startsWith('MXN') ? 0.015 : 0;
-        const montoNeto = rawMonto * (1 - feeRate);
+        // Apply credit: reduce what patient pays today and subtract from saldo
+        const saldoAplicado = aplicarSaldo && saldo > 0 ? Math.min(saldo, rawMonto) : 0;
+        const montoNeto = (rawMonto - saldoAplicado) * (1 - feeRate);
 
         const payment: PatientPayment = {
             id: `pay-${Date.now()}`,
@@ -172,6 +198,9 @@ export const PatientFinanzas: React.FC<PatientFinanzasProps> = ({
 
         // Persist to patient record
         await onSavePayment(payment);
+
+        // Deduct applied credit from patient saldo
+        if (saldoAplicado > 0) updateSaldo(saldo - saldoAplicado);
 
         // Sync to Caja del Día (if open)
         addMovimiento({
@@ -204,6 +233,7 @@ export const PatientFinanzas: React.FC<PatientFinanzasProps> = ({
         setSelectedItems([]);
         setNotes('');
         setMetodo('efectivo');
+        setAplicarSaldo(false);
     };
 
     // ── History list ─────────────────────────────────────────────────────────
@@ -249,6 +279,36 @@ export const PatientFinanzas: React.FC<PatientFinanzasProps> = ({
                         </div>
                     ))}
                 </div>
+
+                {/* ── Saldo a favor ────────────────────────────────────────── */}
+                {patientId && (
+                    <div className={`flex items-center justify-between px-4 py-3 rounded-2xl border ${
+                        saldo > 0
+                            ? 'bg-emerald-500/8 border-emerald-500/25'
+                            : saldo < 0
+                            ? 'bg-red-500/8 border-red-500/25'
+                            : 'bg-white/3 border-white/10'
+                    }`}>
+                        <div className="flex items-center gap-3">
+                            <Gift className={`w-4 h-4 ${saldo > 0 ? 'text-emerald-400' : saldo < 0 ? 'text-red-400' : 'text-clinical/30'}`} />
+                            <div>
+                                <p className={`text-xs font-bold uppercase tracking-wide ${saldo > 0 ? 'text-emerald-400/70' : saldo < 0 ? 'text-red-400/70' : 'text-clinical/30'}`}>
+                                    {saldo > 0 ? 'Saldo a favor' : saldo < 0 ? 'Saldo deudor' : 'Sin saldo'}
+                                </p>
+                                <p className={`font-syne text-lg font-bold ${saldo > 0 ? 'text-emerald-400' : saldo < 0 ? 'text-red-400' : 'text-clinical/40'}`}>
+                                    {saldo > 0 ? '+' : ''}{fmt(saldo)}
+                                </p>
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setShowSaldoModal(true)}
+                            className="text-xs font-bold px-3 py-1.5 rounded-xl border border-white/15 text-clinical/50 hover:text-white hover:border-white/30 transition-colors flex items-center gap-1.5"
+                        >
+                            <DollarSign className="w-3.5 h-3.5" /> Ajustar
+                        </button>
+                    </div>
+                )}
 
                 {/* ── Progress Bar ─────────────────────────────────────────── */}
                 {totalPlan > 0 && (
@@ -559,6 +619,25 @@ export const PatientFinanzas: React.FC<PatientFinanzasProps> = ({
                                     )}
                                 </div>
 
+                                {/* Apply credit */}
+                                {saldo > 0 && (
+                                    <label className="flex items-center gap-3 px-4 py-3 rounded-xl border border-emerald-500/25 bg-emerald-500/8 cursor-pointer hover:bg-emerald-500/12 transition-colors">
+                                        <input
+                                            type="checkbox"
+                                            className="accent-yellow-400"
+                                            checked={aplicarSaldo}
+                                            onChange={e => setAplicarSaldo(e.target.checked)}
+                                        />
+                                        <div className="flex-1">
+                                            <p className="text-sm font-bold text-emerald-400">Aplicar saldo a favor</p>
+                                            <p className="text-xs text-clinical/40">
+                                                Disponible: {fmt(saldo)} — se descontará del cobro
+                                            </p>
+                                        </div>
+                                        <Gift className="w-4 h-4 text-emerald-400/60 flex-shrink-0" />
+                                    </label>
+                                )}
+
                                 {/* Notes */}
                                 <div>
                                     <label className="text-xs text-clinical/50 font-bold uppercase mb-1 block">Notas (opcional)</label>
@@ -581,6 +660,82 @@ export const PatientFinanzas: React.FC<PatientFinanzasProps> = ({
                                         ? <Loader2 className="w-5 h-5 animate-spin" />
                                         : <><DollarSign className="w-5 h-5" /> Confirmar Cobro</>
                                     }
+                                </button>
+                            </form>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* ════════ MODAL AJUSTE DE SALDO ════════ */}
+            <AnimatePresence>
+                {showSaldoModal && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[210] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+                        onClick={e => { if (e.target === e.currentTarget) setShowSaldoModal(false); }}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.95, opacity: 0, y: 20 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            exit={{ scale: 0.95, opacity: 0 }}
+                            className="bg-[#0d1b2a] border border-white/15 rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden"
+                        >
+                            <div className="p-5 border-b border-white/10 flex items-center justify-between">
+                                <div>
+                                    <h3 className="font-syne text-lg font-bold text-white">Ajustar Saldo</h3>
+                                    <p className="text-xs text-clinical/40 mt-0.5">Actual: {fmt(saldo)}</p>
+                                </div>
+                                <button type="button" title="Cerrar" onClick={() => setShowSaldoModal(false)} className="text-clinical/40 hover:text-white p-2 rounded-xl hover:bg-white/5 transition-colors">
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                            <form onSubmit={handleSaldoAjuste} className="p-5 space-y-4">
+                                {/* Tipo */}
+                                <div className="flex gap-2">
+                                    {(['abonar', 'cargo'] as const).map(t => (
+                                        <button
+                                            key={t}
+                                            type="button"
+                                            onClick={() => setSaldoTipo(t)}
+                                            className={`flex-1 py-2 rounded-xl font-bold text-sm border transition-all flex items-center justify-center gap-2 ${
+                                                saldoTipo === t
+                                                    ? t === 'abonar'
+                                                        ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400'
+                                                        : 'bg-red-500/20 border-red-500/40 text-red-400'
+                                                    : 'border-white/10 text-clinical/40 hover:border-white/20'
+                                            }`}
+                                        >
+                                            {t === 'abonar' ? <><Plus className="w-4 h-4" /> Abonar</> : <><Minus className="w-4 h-4" /> Cargo</>}
+                                        </button>
+                                    ))}
+                                </div>
+                                {/* Monto */}
+                                <div className="relative">
+                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-clinical/40 font-bold">$</span>
+                                    <input
+                                        type="number"
+                                        required
+                                        min="0.01"
+                                        step="0.01"
+                                        value={saldoAjuste}
+                                        onChange={e => setSaldoAjuste(e.target.value)}
+                                        placeholder="0.00"
+                                        className="w-full bg-black/40 border border-white/10 rounded-xl pl-8 pr-4 py-3 text-white font-bold text-lg focus:border-electric outline-none transition-colors"
+                                    />
+                                </div>
+                                <p className="text-xs text-clinical/35">
+                                    Nuevo saldo: <span className="text-white font-bold">
+                                        {fmt(saldo + (saldoTipo === 'abonar' ? Number(saldoAjuste) || 0 : -(Number(saldoAjuste) || 0)))}
+                                    </span>
+                                </p>
+                                <button
+                                    type="submit"
+                                    className="w-full py-3 rounded-2xl bg-premium text-cobalt font-black text-sm flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
+                                >
+                                    <Gift className="w-4 h-4" /> Guardar Ajuste
                                 </button>
                             </form>
                         </motion.div>
