@@ -124,8 +124,11 @@ export const PatientFinanzas: React.FC<PatientFinanzasProps> = ({
         [treatmentPlan.items]
     );
 
+    const itemFinalPrice = (i: { price: number; discount: number }) =>
+        i.price - (i.price * (i.discount / 100));
+
     const totalPlan = useMemo(
-        () => activeItems.reduce((sum, i) => sum + (i.price - i.discount), 0),
+        () => activeItems.reduce((sum, i) => sum + itemFinalPrice(i), 0),
         [activeItems]
     );
 
@@ -169,18 +172,21 @@ export const PatientFinanzas: React.FC<PatientFinanzasProps> = ({
             .filter(i => !coveredItemIds.has(i.id))
             .map(i => i.id);
         setSelectedItems(pending);
-        setMonto(String(Math.max(0, totalPendiente)));
+        // Only pre-fill amount when there's actual pending balance; leave blank for $0 coverage linking
+        if (totalPendiente > 0) setMonto(String(totalPendiente));
         setConcepto(autoConcepto(pending));
     };
 
     // ── Submit ───────────────────────────────────────────────────────────────
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!monto || Number(monto) <= 0) return;
+        // Allow $0 cobros only when linking uncovered treatment items (coverage registration)
+        const montoNum = Number(monto) || 0;
+        if (montoNum <= 0 && selectedItems.length === 0) return;
         setSaving(true);
 
         const isCripto = metodo === 'cripto';
-        const rawMonto = Number(monto);
+        const rawMonto = montoNum;
         const feeRate = isCripto && !cryptoType.startsWith('MXN') ? 0.015 : 0;
         // Apply credit: reduce what patient pays today and subtract from saldo
         const saldoAplicado = aplicarSaldo && saldo > 0 ? Math.min(saldo, rawMonto) : 0;
@@ -360,11 +366,17 @@ export const PatientFinanzas: React.FC<PatientFinanzasProps> = ({
                 <button
                     type="button"
                     onClick={() => { setShowModal(true); fillPendiente(); }}
-                    disabled={totalPendiente <= 0 && totalPlan > 0}
+                    disabled={totalPendiente <= 0 && itemsPendientes.length === 0 && totalPlan > 0}
                     className="w-full py-4 rounded-2xl bg-premium text-cobalt font-black text-base flex items-center justify-center gap-2 hover:opacity-90 transition-opacity shadow-[0_0_24px_rgba(212,175,55,0.35)] disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                     <Plus className="w-5 h-5" />
-                    {totalPlan === 0 ? 'Registrar Pago' : totalPendiente <= 0 ? 'Plan Totalmente Pagado' : `Registrar Cobro — ${fmt(totalPendiente)} pendiente`}
+                    {totalPlan === 0
+                        ? 'Registrar Pago'
+                        : totalPendiente <= 0 && itemsPendientes.length === 0
+                            ? 'Plan Totalmente Pagado'
+                            : totalPendiente <= 0 && itemsPendientes.length > 0
+                                ? `Vincular ${itemsPendientes.length} tratamiento${itemsPendientes.length > 1 ? 's' : ''} pendiente${itemsPendientes.length > 1 ? 's' : ''}`
+                                : `Registrar Cobro — ${fmt(totalPendiente)} pendiente`}
                 </button>
 
                 {/* ── Pending items breakdown ──────────────────────────────── */}
@@ -379,7 +391,7 @@ export const PatientFinanzas: React.FC<PatientFinanzasProps> = ({
                                     <span className="text-clinical/70">
                                         {item.toothNumber ? `D${item.toothNumber} · ` : ''}{item.name}
                                     </span>
-                                    <span className="text-amber-400 font-bold">{fmt(item.price - item.discount)}</span>
+                                    <span className="text-amber-400 font-bold">{fmt(itemFinalPrice(item))}</span>
                                 </div>
                             ))}
                         </div>
@@ -522,8 +534,14 @@ export const PatientFinanzas: React.FC<PatientFinanzasProps> = ({
                             {/* Modal header */}
                             <div className="p-6 border-b border-white/10 flex items-center justify-between">
                                 <div>
-                                    <h3 className="font-syne text-xl font-bold text-white">Registrar Cobro</h3>
-                                    <p className="text-xs text-clinical/40 mt-0.5">{patientName}</p>
+                                    <h3 className="font-syne text-xl font-bold text-white">
+                                        {totalPendiente <= 0 && itemsPendientes.length > 0 ? 'Vincular Tratamientos' : 'Registrar Cobro'}
+                                    </h3>
+                                    <p className="text-xs text-clinical/40 mt-0.5">
+                                        {totalPendiente <= 0 && itemsPendientes.length > 0
+                                            ? 'Saldo cubierto — vincula los tratamientos al cobro existente'
+                                            : patientName}
+                                    </p>
                                 </div>
                                 <button
                                     type="button"
@@ -571,7 +589,7 @@ export const PatientFinanzas: React.FC<PatientFinanzasProps> = ({
                                                             {item.toothNumber ? `D${item.toothNumber} · ` : ''}{item.name}
                                                         </span>
                                                         <span className={`text-xs font-bold flex-shrink-0 ${alreadyCovered ? 'text-emerald-400/60 line-through' : 'text-electric'}`}>
-                                                            {alreadyCovered ? 'Pagado' : fmt(item.price - item.discount)}
+                                                            {alreadyCovered ? 'Pagado' : fmt(itemFinalPrice(item))}
                                                         </span>
                                                     </label>
                                                 );
