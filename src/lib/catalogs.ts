@@ -7,6 +7,7 @@ export interface CatalogItem {
 
 /** Entidades Federativas (Mexican States) per NOM-024/INEGI */
 export const ENTIDADES_FEDERATIVAS = [
+    { code: 'NE', name: 'Extranjero / Nacido en el Extranjero' },
     { code: 'AS', name: 'Aguascalientes' },
     { code: 'BC', name: 'Baja California' },
     { code: 'BS', name: 'Baja California Sur' },
@@ -38,8 +39,7 @@ export const ENTIDADES_FEDERATIVAS = [
     { code: 'TL', name: 'Tlaxcala' },
     { code: 'VZ', name: 'Veracruz' },
     { code: 'YN', name: 'Yucatán' },
-    { code: 'ZS', name: 'Zacatecas' },
-    { code: 'NE', name: 'Nacido en el Extranjero' }
+    { code: 'ZS', name: 'Zacatecas' }
 ];
 
 /** 

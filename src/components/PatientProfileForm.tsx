@@ -328,9 +328,9 @@ export const PatientProfileForm: React.FC<{ isOpen: boolean; onClose: () => void
 
                             <div className="grid grid-cols-2 gap-6">
                                 <div>
-                                    <label className="text-xs font-bold text-gray-500 mb-1 block">Entidad Federativa de Nacimiento*</label>
+                                    <label className="text-xs font-bold text-gray-500 mb-1 block">Entidad Federativa de Nacimiento</label>
                                     <select title="Entidad" value={formState["text_cat_entidad"] || ""} onChange={e => handleInput("text_cat_entidad", e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-md p-2 text-sm focus:border-electric outline-none transition-colors">
-                                        <option value="">Selecciona Estado...</option>
+                                        <option value="">— Selecciona Estado o Extranjero —</option>
                                         {ENTIDADES_FEDERATIVAS.map(ef => <option key={ef.code} value={ef.code}>{ef.name}</option>)}
                                     </select>
                                 </div>
