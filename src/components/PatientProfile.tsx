@@ -215,6 +215,12 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patie
         setPayments(updated);
     };
 
+    const handleDeletePayment = async (paymentId: string) => {
+        const updated = payments.filter(p => p.id !== paymentId);
+        await savePatientRecord(patientId, { payments: updated });
+        setPayments(updated);
+    };
+
     const formatVisitDate = (iso: string) => {
         const d = new Date(iso + (iso.includes('T') ? '' : 'T00:00:00'));
         return d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -593,6 +599,7 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patie
                                     treatmentPlan={treatmentPlan}
                                     payments={payments}
                                     onSavePayment={handleSavePayment}
+                                    onDeletePayment={handleDeletePayment}
                                 />
                             )}
                         </>

@@ -3,7 +3,7 @@ import {
     DollarSign, Plus, CreditCard, Banknote, ArrowDownToLine,
     Bitcoin, CheckCircle2, Clock, ChevronDown, ChevronUp,
     Receipt, Wallet, TrendingUp, AlertCircle, X, Loader2,
-    Lock, ChevronRight, FileText, Printer, Gift, Minus,
+    Lock, ChevronRight, FileText, Printer, Gift, Minus, Trash2,
 } from 'lucide-react';
 import { printPaymentReceipt } from '../../utils/patientPrint';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -22,6 +22,7 @@ interface PatientFinanzasProps {
     treatmentPlan: TreatmentPlan;
     payments: PatientPayment[];
     onSavePayment: (payment: PatientPayment) => Promise<void>;
+    onDeletePayment?: (paymentId: string) => Promise<void>;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -72,6 +73,7 @@ export const PatientFinanzas: React.FC<PatientFinanzasProps> = ({
     treatmentPlan,
     payments,
     onSavePayment,
+    onDeletePayment,
 }) => {
     const { currentUserId, clinicProfile, patients, setPatients } = useMarket();
     const currentStaff = clinicProfile?.staff?.find(s => s.id === currentUserId);
@@ -457,13 +459,29 @@ export const PatientFinanzas: React.FC<PatientFinanzasProps> = ({
                                                             <p className="text-xs text-clinical/70 leading-relaxed">{payment.notes}</p>
                                                         </div>
                                                     )}
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => printPaymentReceipt(patientName, payment)}
-                                                        className="flex items-center gap-1.5 text-[10px] font-bold text-electric border border-electric/30 rounded-lg px-3 py-1.5 hover:bg-electric/10 transition-colors mt-1"
-                                                    >
-                                                        <Printer className="w-3 h-3" /> Imprimir Comprobante
-                                                    </button>
+                                                    <div className="flex items-center gap-2 mt-1">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => printPaymentReceipt(patientName, payment)}
+                                                            className="flex items-center gap-1.5 text-[10px] font-bold text-electric border border-electric/30 rounded-lg px-3 py-1.5 hover:bg-electric/10 transition-colors"
+                                                        >
+                                                            <Printer className="w-3 h-3" /> Imprimir Comprobante
+                                                        </button>
+                                                        {onDeletePayment && (
+                                                            <button
+                                                                type="button"
+                                                                title="Eliminar pago"
+                                                                onClick={async () => {
+                                                                    if (!confirm(`¿Eliminar el cobro "${payment.concepto}" de ${fmt(payment.monto)}? Esta acción no se puede deshacer.`)) return;
+                                                                    await onDeletePayment(payment.id);
+                                                                    setSelectedPayment(null);
+                                                                }}
+                                                                className="flex items-center gap-1.5 text-[10px] font-bold text-red-400 border border-red-500/30 rounded-lg px-3 py-1.5 hover:bg-red-500/10 transition-colors"
+                                                            >
+                                                                <Trash2 className="w-3 h-3" /> Eliminar
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </motion.div>
                                         )}
