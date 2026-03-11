@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
     User, Activity, FileText, BriefcaseMedical, Camera,
     Sparkles, Trash2, Loader2, CheckCircle2, Plus, Layers,
-    AlertTriangle, ShieldAlert, Printer, Link2, Landmark, FileSignature,
+    AlertTriangle, ShieldAlert, Printer, Link2, Landmark, FileSignature, DollarSign,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { AIClinicalViewer } from './AIClinicalViewer';
@@ -119,6 +119,15 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patie
             setIsLoading(false);
         });
     }, [patientId]);
+
+    // Live adeudo: plan total vs money received — updates reactively when payments or plan change
+    const adeudoFinanciero = React.useMemo(() => {
+        const activeItems = treatmentPlan.items.filter(i => i.status !== 'cancelled');
+        const planTotal = activeItems.reduce((s, i) => s + (i.price - (i.price * (i.discount / 100))), 0);
+        const received = payments.reduce((s, p) => s + p.monto, 0);
+        return Math.max(0, planTotal - received);
+    }, [payments, treatmentPlan]);
+    const hasAdeudoAlert = adeudoFinanciero > 0;
 
     const showSaved = (msg = '¡Guardado!') => {
         setSavedMsg(msg);
@@ -291,7 +300,7 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patie
                 </div>
 
                 {/* ── Alert banners (persistent across all tabs) ──────────── */}
-                {(hasMedAlert || hasAdminAlert) && (
+                {(hasMedAlert || hasAdminAlert || hasAdeudoAlert) && (
                     <div className="flex gap-2 px-6 pt-3 pb-1 flex-shrink-0 flex-wrap">
                         {hasMedAlert && (
                             <div className="flex items-center gap-2 bg-red-500/15 border border-red-500/40 rounded-xl px-4 py-2 flex-1 min-w-[220px]">
@@ -308,6 +317,17 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patie
                                 <div>
                                     <p className="text-[9px] text-amber-400/70 uppercase tracking-widest font-bold">Alerta Administrativa</p>
                                     <p className="text-amber-300 text-sm font-bold leading-tight">{adminAlertText}</p>
+                                </div>
+                            </div>
+                        )}
+                        {hasAdeudoAlert && (
+                            <div className="flex items-center gap-2 bg-orange-500/15 border border-orange-500/40 rounded-xl px-4 py-2 flex-1 min-w-[220px]">
+                                <DollarSign className="w-4 h-4 text-orange-400 flex-shrink-0" />
+                                <div>
+                                    <p className="text-[9px] text-orange-400/70 uppercase tracking-widest font-bold">Adeudo Pendiente</p>
+                                    <p className="text-orange-300 text-sm font-bold leading-tight">
+                                        Saldo por cobrar: ${adeudoFinanciero.toLocaleString('es-MX')}
+                                    </p>
                                 </div>
                             </div>
                         )}
@@ -341,7 +361,7 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patie
                                 <div className="p-6 space-y-6 overflow-y-auto h-full animate-in fade-in duration-300">
 
                                     {/* Active alert detail cards */}
-                                    {(hasMedAlert || hasAdminAlert) && (
+                                    {(hasMedAlert || hasAdminAlert || hasAdeudoAlert) && (
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                             {hasMedAlert && (
                                                 <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-4 flex gap-3">
@@ -364,6 +384,18 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patie
                                                         <p className="text-[10px] text-amber-400/70 uppercase tracking-widest font-bold mb-0.5">⚠ Alerta Administrativa</p>
                                                         <p className="text-amber-300 font-bold text-base">{adminAlertText}</p>
                                                         <p className="text-amber-400/50 text-[10px] mt-1">Verificar situación antes de procesar cobros o emitir facturas</p>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {hasAdeudoAlert && (
+                                                <div className="bg-orange-500/10 border border-orange-500/30 rounded-2xl p-4 flex gap-3">
+                                                    <div className="w-10 h-10 rounded-xl bg-orange-500/20 flex items-center justify-center flex-shrink-0">
+                                                        <DollarSign className="w-5 h-5 text-orange-400" />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[10px] text-orange-400/70 uppercase tracking-widest font-bold mb-0.5">$ Adeudo Pendiente</p>
+                                                        <p className="text-orange-300 font-bold text-base">${adeudoFinanciero.toLocaleString('es-MX')} por cobrar</p>
+                                                        <p className="text-orange-400/50 text-[10px] mt-1">El paciente tiene tratamientos completados sin cubrir el pago total</p>
                                                     </div>
                                                 </div>
                                             )}
