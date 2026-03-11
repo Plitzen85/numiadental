@@ -2,10 +2,11 @@ import React, { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { useMarket, ClinicProfile, StaffMember, ModulePermissions } from '../context/MarketContext';
 import { useAuth } from '../context/AuthContext';
+import { supabase, CLINIC_ID } from '../lib/supabase';
 import {
     Users, Plus, Trash2, X, Key, RefreshCw, Save,
     AlertCircle, Building2, UserCircle, MapPin, Upload,
-    CheckCircle2, XCircle
+    CheckCircle2, XCircle, ShieldAlert
 } from 'lucide-react';
 
 const CATEGORIES = ['Preventivo', 'Restauradores', 'Estéticos', 'Ortodónticos', 'Periodontales', 'Merchandising'];
@@ -58,6 +59,7 @@ export const Settings: React.FC = () => {
             whatsapp: clinicProfile?.redesSociales?.whatsapp || ''
         },
         whatsappTemplate: clinicProfile?.whatsappTemplate || '',
+        timezone: clinicProfile?.timezone || 'America/Mexico_City',
     });
 
     const [newService, setNewService] = useState({ category: 'Preventivo', name: '', price: '' });
@@ -436,6 +438,22 @@ export const Settings: React.FC = () => {
                                     placeholder="Ej. 12345678"
                                     className="w-full bg-cobalt border border-white/20 rounded-lg px-4 py-2 text-clinical focus:outline-none focus:border-electric" />
                             </div>
+                            <div>
+                                <label className="text-sm text-clinical/60 block mb-2">Zona Horaria de la Clínica</label>
+                                <select title="Zona Horaria" value={formData.timezone ?? 'America/Mexico_City'}
+                                    onChange={e => setFormData({ ...formData, timezone: e.target.value })}
+                                    className="w-full bg-cobalt border border-white/20 rounded-lg px-4 py-2 text-clinical focus:outline-none focus:border-electric">
+                                    <option value="America/Mexico_City">Ciudad de México / Centro (UTC-6/UTC-5)</option>
+                                    <option value="America/Cancun">Cancún / Chetumal (UTC-5, sin cambio)</option>
+                                    <option value="America/Chihuahua">Chihuahua / Sonora Norte (UTC-7/UTC-6)</option>
+                                    <option value="America/Hermosillo">Hermosillo / Sonora (UTC-7, sin cambio)</option>
+                                    <option value="America/Tijuana">Tijuana / Baja California (UTC-8/UTC-7)</option>
+                                    <option value="America/New_York">Nueva York (UTC-5/UTC-4)</option>
+                                    <option value="America/Los_Angeles">Los Ángeles (UTC-8/UTC-7)</option>
+                                    <option value="America/Chicago">Chicago (UTC-6/UTC-5)</option>
+                                </select>
+                                <p className="text-[11px] text-clinical/30 mt-1">Usada para calcular la fecha y hora correcta en Caja del Día.</p>
+                            </div>
                         </div>
 
                         {/* Redes Sociales */}
@@ -624,6 +642,60 @@ export const Settings: React.FC = () => {
                             </div>
                         );
                     })}
+                </div>
+            )}
+
+            {/* ── ZONA DE PELIGRO (Master Admin only) ── */}
+            {isMasterAdmin && (
+                <div className="border border-red-500/30 bg-red-500/5 rounded-2xl p-6 space-y-4">
+                    <h2 className="font-syne text-lg font-bold text-red-400 flex items-center gap-2">
+                        <ShieldAlert className="w-5 h-5" /> Zona de Peligro — Solo Administrador Maestro
+                    </h2>
+                    <p className="text-clinical/40 text-sm">Estas acciones son irreversibles. Úsalas solo para pruebas y restauración del sistema.</p>
+                    <div className="flex flex-wrap gap-3">
+                        <button
+                            type="button"
+                            onClick={async () => {
+                                if (!confirm('¿Seguro? Esto borrará TODOS los expedientes clínicos (visitas, planes de tratamiento, pagos) de Supabase. No se puede deshacer.')) return;
+                                const { error } = await supabase
+                                    .from('patient_records')
+                                    .delete()
+                                    .eq('clinic_id', CLINIC_ID);
+                                if (error) { alert(`Error: ${error.message}`); return; }
+                                alert('Expedientes clínicos eliminados de Supabase.');
+                            }}
+                            className="px-4 py-2.5 rounded-xl bg-red-500/15 border border-red-500/40 text-red-400 hover:bg-red-500/25 transition-colors font-bold text-sm"
+                        >
+                            Borrar todos los expedientes clínicos (Supabase)
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (!confirm('¿Seguro? Esto borrará toda la información de Caja del localStorage de este navegador.')) return;
+                                localStorage.removeItem('numia_caja_data');
+                                alert('Datos de Caja eliminados del localStorage.');
+                            }}
+                            className="px-4 py-2.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-400 hover:bg-amber-500/25 transition-colors font-bold text-sm"
+                        >
+                            Limpiar Caja del Día (localStorage)
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (!confirm('¿Resetear saldo a favor de todos los pacientes a $0?')) return;
+                                if (!clinicProfile) return;
+                                const updated = {
+                                    ...clinicProfile,
+                                    patients: (clinicProfile.patients ?? []).map(p => ({ ...p, saldo: 0 })),
+                                };
+                                setClinicProfile(updated);
+                                alert('Saldo de todos los pacientes reseteado a $0.');
+                            }}
+                            className="px-4 py-2.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-400 hover:bg-amber-500/25 transition-colors font-bold text-sm"
+                        >
+                            Resetear saldo de pacientes ($0)
+                        </button>
+                    </div>
                 </div>
             )}
         </motion.div>

@@ -55,16 +55,20 @@ const saveAll = (days: CajaDay[]) => {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Devuelve la fecha local (no UTC) como YYYY-MM-DD.
+/** Devuelve la fecha local (no UTC) como YYYY-MM-DD usando el timezone de la clínica.
  *  toISOString() usa UTC y en México (UTC-6) da el día siguiente después de las 18h. */
-const localDateStr = (): string => {
-    const d = new Date();
-    return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`;
+export const getClinicDateStr = (timezone = 'America/Mexico_City'): string => {
+    return new Intl.DateTimeFormat('en-CA', {
+        timeZone: timezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    }).format(new Date());
 };
 
-const todayKey = () => `caja-${localDateStr()}`;
+const todayKey = () => `caja-${getClinicDateStr()}`;
 
-export const todayDate = () => localDateStr();
+export const todayDate = (timezone?: string) => getClinicDateStr(timezone);
 
 // ─── API ──────────────────────────────────────────────────────────────────────
 

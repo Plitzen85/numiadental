@@ -140,6 +140,7 @@ export interface ClinicProfile {
     aseguradoras?: DirectoryEntity[];
     patients?: Patient[]; // Persisted patient list
     whatsappTemplate?: string; // Configurable reminder template
+    timezone?: string;          // IANA timezone e.g. 'America/Mexico_City' (default)
     identidadCorporativa?: {
         logo?: string;           // Base64 or URL
         slogan?: string;

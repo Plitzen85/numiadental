@@ -10,7 +10,7 @@ import { useMarket } from '../context/MarketContext';
 import {
     getTodayCaja, abrirCaja, cerrarCaja, reabrirCaja, addMovimiento,
     getAllCajas, calcTotals, CajaDay, CajaMovimiento,
-    editCajaCierre, deleteCaja,
+    editCajaCierre, deleteCaja, getClinicDateStr,
 } from '../lib/cajaApi';
 import { MetodoPago } from '../lib/supabase';
 
@@ -35,8 +35,11 @@ const METODO_ICONS: Record<MetodoPago, React.ReactNode> = {
 const fmt = (n: number) =>
     new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 0 }).format(n);
 
-const fmtDate = (iso: string) =>
-    new Date(iso + 'T00:00:00').toLocaleDateString('es-MX', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+const fmtDate = (iso: string, timezone = 'America/Mexico_City') =>
+    new Intl.DateTimeFormat('es-MX', {
+        weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
+        timeZone: timezone,
+    }).format(new Date(iso + 'T12:00:00'));
 
 // ─── Subcomponents ────────────────────────────────────────────────────────────
 
@@ -67,6 +70,8 @@ export const Caja: React.FC = () => {
     const { currentUserId, clinicProfile } = useMarket();
     const currentStaff = clinicProfile?.staff?.find(s => s.id === currentUserId);
     const operadorName = currentStaff?.nombres ?? 'Operador';
+    const clinicTz = clinicProfile?.timezone ?? 'America/Mexico_City';
+    const clinicToday = getClinicDateStr(clinicTz);
 
     const [caja, setCaja] = useState<CajaDay | null>(null);
     const [historial, setHistorial] = useState<CajaDay[]>([]);
@@ -113,8 +118,7 @@ export const Caja: React.FC = () => {
     // ── Load ─────────────────────────────────────────────────────────────────
     useEffect(() => {
         const todaysCaja = getTodayCaja();
-        const _d = new Date();
-        const todayId = `caja-${_d.getFullYear()}-${(_d.getMonth()+1).toString().padStart(2,'0')}-${_d.getDate().toString().padStart(2,'0')}`;
+        const todayId = `caja-${getClinicDateStr()}`;
         if (todaysCaja?.status === 'open') {
             setCaja(todaysCaja);
             setHistorial(getAllCajas().filter(d => d.id !== todayId));
@@ -133,8 +137,7 @@ export const Caja: React.FC = () => {
         e.preventDefault();
         setSavingApertura(true);
         const opened = abrirCaja(Number(aperturaAmt) || 0, currentUserId, operadorName);
-        const _d2 = new Date();
-        const todayId = `caja-${_d2.getFullYear()}-${(_d2.getMonth()+1).toString().padStart(2,'0')}-${_d2.getDate().toString().padStart(2,'0')}`;
+        const todayId = `caja-${getClinicDateStr()}`;
         setCaja(opened);
         setHistorial(getAllCajas().filter(d => d.id !== todayId));
         setSavingApertura(false);
@@ -246,7 +249,7 @@ export const Caja: React.FC = () => {
                         <Landmark className="text-premium" /> Caja del Día
                     </h1>
                     <p className="text-clinical/40 text-sm mt-1 capitalize">
-                        {fmtDate(new Date().toISOString().split('T')[0])}
+                        {fmtDate(clinicToday, clinicTz)}
                     </p>
                 </div>
                 {caja?.status === 'open' && (
@@ -541,7 +544,7 @@ export const Caja: React.FC = () => {
                                                         <p className="text-[11px] text-clinical/35">ingresos</p>
                                                     </div>
                                                     {/* Reabrir button — only for today's closed caja */}
-                                                    {h.date === new Date().toISOString().split('T')[0] && h.status === 'closed' && (
+                                                    {h.date === clinicToday && h.status === 'closed' && (
                                                         <button
                                                             type="button"
                                                             title="Reabrir caja del día"
