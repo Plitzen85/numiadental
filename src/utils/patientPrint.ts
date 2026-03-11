@@ -375,32 +375,33 @@ export function printConsentDocument(
   <title>Consentimiento Informado — ${patientName}</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:'Helvetica Neue',Arial,sans-serif;font-size:12px;color:#1a1a2e;line-height:1.6;background:#fff}
-    .page{max-width:820px;margin:0 auto;padding:40px 36px}
-    .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid ${brandColor};padding-bottom:20px;margin-bottom:28px}
-    .logo{font-size:26px;font-weight:900;letter-spacing:3px;color:${brandColor}}
-    .logo-sub{font-size:10px;color:#888;letter-spacing:1px;text-transform:uppercase;margin-top:2px}
-    .meta{text-align:right;font-size:11px;color:#666;line-height:1.8}
-    .meta strong{color:#1a1a2e;font-size:13px}
-    .title-block{text-align:center;margin-bottom:28px}
-    .doc-title{font-size:18px;font-weight:900;text-transform:uppercase;letter-spacing:2px;color:#1a1a2e;margin-bottom:6px}
-    .doc-subtitle{font-size:12px;color:#6b7280}
-    .intro{background:#f0fffe;border:1px solid #a7f3d0;border-radius:8px;padding:14px 18px;margin-bottom:24px;font-size:12px;color:#065f46;line-height:1.7}
-    .consent-item{display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border-radius:8px;border:1.5px solid #e5e7eb;margin-bottom:10px;background:#f9fafb}
+    body{font-family:'Helvetica Neue',Arial,sans-serif;font-size:11px;color:#1a1a2e;line-height:1.5;background:#fff}
+    .page{max-width:780px;margin:0 auto;padding:22px 28px}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid ${brandColor};padding-bottom:12px;margin-bottom:16px}
+    .logo{font-size:20px;font-weight:900;letter-spacing:2px;color:${brandColor}}
+    .logo-sub{font-size:9px;color:#888;letter-spacing:1px;text-transform:uppercase;margin-top:1px}
+    .meta{text-align:right;font-size:10px;color:#666;line-height:1.6}
+    .meta strong{color:#1a1a2e;font-size:11px}
+    .title-block{text-align:center;margin-bottom:14px}
+    .doc-title{font-size:14px;font-weight:900;text-transform:uppercase;letter-spacing:1.5px;color:#1a1a2e;margin-bottom:4px}
+    .doc-subtitle{font-size:10px;color:#6b7280}
+    .intro{background:#f0fffe;border:1px solid #a7f3d0;border-radius:6px;padding:9px 14px;margin-bottom:14px;font-size:11px;color:#065f46;line-height:1.5}
+    .consent-item{display:flex;align-items:flex-start;gap:10px;padding:8px 12px;border-radius:6px;border:1px solid #e5e7eb;margin-bottom:6px;background:#f9fafb}
     .consent-item.checked{border-color:#10b981;background:#f0fdf4}
-    .check-icon{font-size:16px;font-weight:900;color:#9ca3af;shrink:0;margin-top:1px;min-width:18px;text-align:center}
+    .check-icon{font-size:13px;font-weight:900;color:#9ca3af;shrink:0;margin-top:1px;min-width:16px;text-align:center}
     .consent-item.checked .check-icon{color:#10b981}
-    .item-text{font-size:12px;color:#374151;line-height:1.6}
+    .item-text{font-size:11px;color:#374151;line-height:1.5}
     .consent-item.checked .item-text{color:#065f46}
-    .signature-block{margin-top:36px;border:2px solid ${brandColor};border-radius:12px;padding:20px 24px}
-    .sig-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:${brandColor};margin-bottom:14px}
+    .signature-block{margin-top:18px;border:1.5px solid ${brandColor};border-radius:10px;padding:14px 18px}
+    .sig-title{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:${brandColor};margin-bottom:10px}
     .sig-row{display:flex;justify-content:space-between;gap:20px}
     .sig-field{flex:1}
-    .sig-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#9ca3af;display:block;margin-bottom:4px}
-    .sig-value{font-size:14px;font-weight:700;color:#1a1a2e;border-bottom:2px solid #00d4ff;padding-bottom:4px;font-style:italic}
-    .sig-date{font-size:11px;color:#6b7280;margin-top:10px}
-    .footer{margin-top:36px;padding-top:14px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;font-size:9px;color:#9ca3af}
-    @media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}@page{margin:20mm}}
+    .sig-label{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:#9ca3af;display:block;margin-bottom:3px}
+    .sig-value{font-size:12px;font-weight:700;color:#1a1a2e;border-bottom:2px solid #00d4ff;padding-bottom:3px;font-style:italic}
+    .sig-date{font-size:10px;color:#6b7280;margin-top:8px}
+    .footer{margin-top:16px;padding-top:10px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;font-size:8px;color:#9ca3af}
+    /* Forzar una sola cuartilla — regla permanente */
+    @media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}@page{size:letter portrait;margin:8mm}html,body{height:100%}.page{page-break-after:avoid}}
   </style>
 </head>
 <body><div class="page">
@@ -469,25 +470,26 @@ export function printPaymentReceipt(
 <title>Comprobante ${payment.receiptNumber ?? ''}</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Helvetica Neue',Arial,sans-serif;font-size:12px;color:#1a1a2e;background:#fff}
-.page{max-width:480px;margin:0 auto;padding:40px 32px}
-.header{border-bottom:3px solid ${brandColor};padding-bottom:18px;margin-bottom:24px;display:flex;justify-content:space-between;align-items:flex-start}
-.logo{font-size:22px;font-weight:900;letter-spacing:3px;color:${brandColor}}
-.logo-sub{font-size:9px;color:#888;letter-spacing:1px;text-transform:uppercase;margin-top:2px}
-.meta{text-align:right;font-size:10px;color:#666;line-height:1.8}
-.receipt-badge{text-align:center;margin-bottom:20px}
-.receipt-num{font-size:20px;font-weight:900;color:${brandColor};letter-spacing:2px}
-.receipt-label{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#9ca3af;margin-top:2px}
-.amount-block{background:${brandColor}12;border:2px solid ${brandColor};border-radius:12px;padding:20px;text-align:center;margin:20px 0}
-.amount-label{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#6b7280;margin-bottom:6px}
-.amount-value{font-size:36px;font-weight:900;color:${brandColor}}
-.detail-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f3f4f6;font-size:11px}
+body{font-family:'Helvetica Neue',Arial,sans-serif;font-size:11px;color:#1a1a2e;background:#fff}
+.page{max-width:440px;margin:0 auto;padding:20px 24px}
+.header{border-bottom:2px solid ${brandColor};padding-bottom:10px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:flex-start}
+.logo{font-size:18px;font-weight:900;letter-spacing:2px;color:${brandColor}}
+.logo-sub{font-size:8px;color:#888;letter-spacing:1px;text-transform:uppercase;margin-top:1px}
+.meta{text-align:right;font-size:9px;color:#666;line-height:1.6}
+.receipt-badge{text-align:center;margin-bottom:10px}
+.receipt-num{font-size:14px;font-weight:900;color:${brandColor};letter-spacing:2px}
+.receipt-label{font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:#9ca3af;margin-top:1px}
+.amount-block{background:${brandColor}12;border:2px solid ${brandColor};border-radius:10px;padding:12px;text-align:center;margin:10px 0}
+.amount-label{font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:#6b7280;margin-bottom:4px}
+.amount-value{font-size:26px;font-weight:900;color:${brandColor}}
+.detail-row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #f3f4f6;font-size:10px}
 .detail-row:last-child{border-bottom:none}
 .detail-label{color:#9ca3af;font-weight:600}
 .detail-value{color:#111827;font-weight:700;text-align:right;max-width:60%}
-.check-icon{text-align:center;margin:20px 0;font-size:40px}
-.footer{margin-top:28px;padding-top:12px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;font-size:9px;color:#9ca3af}
-@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}@page{size:A5 portrait;margin:10mm}}
+.check-icon{text-align:center;margin:8px 0;font-size:28px}
+.footer{margin-top:14px;padding-top:8px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;font-size:8px;color:#9ca3af}
+/* Forzar una sola cuartilla — regla permanente */
+@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}@page{size:A5 portrait;margin:6mm}html,body{height:100%}.page{page-break-after:avoid}}
 </style></head>
 <body><div class="page">
 <div class="header">
