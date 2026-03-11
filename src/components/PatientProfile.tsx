@@ -210,9 +210,23 @@ export const PatientProfile: React.FC<PatientProfileProps> = ({ patientId, patie
 
     // ── Payments ──────────────────────────────────────────────────────────────
     const handleSavePayment = async (payment: PatientPayment) => {
-        const updated = [payment, ...payments];
-        await savePatientRecord(patientId, { payments: updated });
-        setPayments(updated);
+        const updatedPayments = [payment, ...payments];
+
+        // Auto-update treatment items covered by this payment → status 'paid'
+        let updatedPlan = treatmentPlan;
+        if (payment.treatmentItemIds.length > 0) {
+            const coveredSet = new Set(payment.treatmentItemIds);
+            const updatedItems = treatmentPlan.items.map(item =>
+                coveredSet.has(item.id) && item.status !== 'cancelled' && item.status !== 'paid'
+                    ? { ...item, status: 'paid' as const, completedDate: item.completedDate ?? new Date().toISOString() }
+                    : item
+            );
+            updatedPlan = { ...treatmentPlan, items: updatedItems, updatedAt: new Date().toISOString() };
+            setTreatmentPlan(updatedPlan);
+        }
+
+        await savePatientRecord(patientId, { payments: updatedPayments, treatmentPlan: updatedPlan });
+        setPayments(updatedPayments);
     };
 
     const handleDeletePayment = async (paymentId: string) => {
